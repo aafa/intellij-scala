@@ -19,13 +19,14 @@ import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil
 import com.intellij.psi.util.PsiTreeUtil.{findElementOfClassAtRange, getChildOfType, getParentOfType}
 import org.jetbrains.plugins.scala.ScalaBundle
 import org.jetbrains.plugins.scala.extensions.{inTransactionLater, inWriteAction, startCommand}
-import org.jetbrains.plugins.scala.lang.psi.ScalaPsiUtil
+import org.jetbrains.plugins.scala.lang.psi.ScalaPsiUtil.{addTypeAliasBefore, adjustTypes}
 import org.jetbrains.plugins.scala.lang.psi.api.base.ScStableCodeReferenceElement
 import org.jetbrains.plugins.scala.lang.psi.api.base.types._
 import org.jetbrains.plugins.scala.lang.psi.api.statements.{ScTypeAlias, ScTypeAliasDefinition}
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.templates.{ScExtendsBlock, ScTemplateBody}
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef.{ScObject, ScTypeDefinition}
 import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory
+import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory.createTypeElementFromText
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil._
 import org.jetbrains.plugins.scala.lang.refactoring.util.{DefaultListCellRendererAdapter, ScalaDirectoryService, ScalaRefactoringUtil}
 import org.jetbrains.plugins.scala.util.JListCompatibility
@@ -86,18 +87,12 @@ trait IntroduceTypeAlias {
       // replace all occurrences, don't replace occurences available from companion object or inheritors
       // suggest to choose scope
       def runInplace(): Unit = {
-        def handleScope(scopeItem: SimpleScopeItem, needReplacement: Boolean) {
-          val suggestedNames = scopeItem.availableNames
-
-          val allOccurrences = OccurrenceData(inTypeElement,
-            isReplaceAllUsual = true,
-            isReplaceOccurrenceIncompanionObject = false,
-            isReplaceOccurrenceInInheritors = false,
-            scopeItem
-          )
-
+        def handleScope(scopeItem: SimpleScopeItem): Unit =
           startCommand(project, INTRODUCE_TYPEALIAS_REFACTORING_NAME) {
+            val suggestedNames = scopeItem.availableNames
+
             val (namedElementReference, typeElementReference) = inWriteAction {
+              val allOccurrences = OccurrenceData(scopeItem)
               runRefactoringForTypeInside(file, inTypeElement, suggestedNames.iterator().next(), allOccurrences, scopeItem)
             }
 
@@ -127,7 +122,6 @@ trait IntroduceTypeAlias {
               }
             }
           }
-        }
 
         val currentScope = currentDataObject.currentScope
 
@@ -149,7 +143,7 @@ trait IntroduceTypeAlias {
           currentDataObject.setInintialInfo(inTypeElement.getTextRange)
           afterScopeChoosing(project, editor, file, currentDataObject.possibleScopes, INTRODUCE_TYPEALIAS_REFACTORING_NAME) {
             case simpleScope: SimpleScopeItem if simpleScope.usualOccurrences.nonEmpty =>
-              handleScope(simpleScope, needReplacement = true)
+              handleScope(simpleScope)
             case packageScope: PackageScopeItem =>
               runWithDialog(fromInplace = true, packageScope)
           }
@@ -171,19 +165,17 @@ trait IntroduceTypeAlias {
                                           occurrences: OccurrenceData,
                                           scope: ScopeItem)
                                          (implicit editor: Editor): (SmartPsiElementPointer[ScTypeAlias], SmartPsiElementPointer[ScTypeElement]) = {
-    def addTypeAliasDefinition(typeName: String, typeElement: ScTypeElement, parent: PsiElement) = {
-      def getAhchor(parent: PsiElement, firstOccurrence: PsiElement): Some[PsiElement] = {
-        Some(parent.getChildren.find(_.getTextRange.contains(firstOccurrence.getTextRange)).getOrElse(parent.getLastChild))
-      }
-
-
-      val mtext = typeElement.calcType.canonicalText
-
+    def addTypeAliasDefinition(typeElement: ScTypeElement, parent: PsiElement) = {
+      val text = typeElement.calcType.canonicalText
       val definition = ScalaPsiElementFactory
-        .createTypeAliasDefinitionFromText(s"type $typeName = $mtext", typeElement.getContext, typeElement)
+        .createTypeAliasDefinitionFromText(s"type $typeName = $text", typeElement.getContext, typeElement)
 
-      val resultTypeAlias = ScalaPsiUtil.addTypeAliasBefore(definition, parent, getAhchor(parent, typeElement))
-      ScalaPsiUtil.adjustTypes(resultTypeAlias, useTypeAliases = false)
+      val anchor = parent.getChildren
+        .find(_.getTextRange.contains(typeElement.getTextRange))
+        .getOrElse(parent.getLastChild)
+
+      val resultTypeAlias = addTypeAliasBefore(definition, parent, Some(anchor))
+      adjustTypes(resultTypeAlias, useTypeAliases = false)
       resultTypeAlias
     }
 
@@ -191,39 +183,57 @@ trait IntroduceTypeAlias {
     editor.putUserData(ScalaIntroduceVariableHandler.REVERT_INFO, revertInfo)
 
     val parent = scope match {
-      case simpleScope: SimpleScopeItem =>
-        simpleScope.fileEncloser
+      case simpleScope: SimpleScopeItem => simpleScope.fileEncloser
       case packageScope: PackageScopeItem =>
         packageScope.fileEncloser match {
           case suggestedDirectory: PsiDirectory =>
             createAndGetPackageObjectBody(typeElement, suggestedDirectory, packageScope.needDirectoryCreating, scope.name)
-          case _ =>
-            packageScope.fileEncloser
+          case encloser => encloser
         }
     }
 
-    val typeAlias = addTypeAliasDefinition(typeName, occurrences.getAllOccurrences(0), parent)
-    if (editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO) != null) {
-      editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).setTypeAlias(typeAlias)
+    val typeAlias = addTypeAliasDefinition(occurrences.allOccurrences.head, parent)
+    Option(editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO))
+      .foreach(_.setTypeAlias(typeAlias))
+
+    def replaceWith(typeElement: ScTypeElement, name: String = typeName): ScTypeElement = {
+      //remove parenthesis around typeElement
+      if (typeElement.getParent.isInstanceOf[ScParenthesisedTypeElement]) {
+        typeElement.getNextSibling.delete()
+        typeElement.getPrevSibling.delete()
+      }
+
+      //avoid replacing typeElement that was replaced
+      val resultTypeElement = if (typeElement.calcType.presentableText == name) typeElement
+      else {
+        typeElement.replace {
+          createTypeElementFromText(name, typeElement.getContext, typeElement)
+        }.asInstanceOf[ScTypeElement]
+      }
+
+      resultTypeElement.getFirstChild match {
+        case element: ScStableCodeReferenceElement => element.bindToElement(typeAlias)
+      }
+
+      resultTypeElement
     }
 
-    val typeElementIdx = occurrences.getUsualOccurrences.indexWhere(_ == typeElement)
+    occurrences.extendedClassOccurrences
+      .foreach(replaceWith(_))
 
-    val usualOccurrences = replaceTypeElements(occurrences.getUsualOccurrences, typeName, typeAlias)
-    replaceTypeElements(occurrences.getExtendedOccurrences, typeName, typeAlias)
+    val className = Option(getParentOfType(parent, classOf[ScObject]))
+      .map(o => o.name + ".")
+      .getOrElse("")
 
-    val className = getParentOfType(parent, classOf[ScObject]) match {
-      case objectType: ScObject =>
-        objectType.name
-      case _ => ""
-    }
+    occurrences.companionObjectOccurrences
+      .foreach(replaceWith(_, s"$className$typeName"))
 
-    replaceTypeElements(occurrences.getCompanionObjOccurrences, className + "." + typeName, typeAlias)
+    val usualOccurrences = occurrences.usualOccurrences
+      .map(replaceWith(_))
 
-    val resultTypeElement = if (typeElementIdx == -1) {
-      replaceTypeElements(Array(typeElement), typeName, typeAlias).apply(0)
-    } else {
-      usualOccurrences.apply(typeElementIdx)
+    val resultTypeElement = occurrences.usualOccurrences.indexWhere(_ == typeElement) match {
+      case -1 => replaceWith(typeElement)
+      case i => usualOccurrences(i)
     }
 
     val manager = SmartPointerManager.getInstance(file.getProject)
@@ -249,34 +259,6 @@ trait IntroduceTypeAlias {
     showTypeAliasChooser(editor, scopes, (elem: ScopeItem) => chooseScopeItem(elem),
       ScalaBundle.message("choose.scope.for", refactoringName), (elem: ScopeItem) => elem.toString)
   }
-
-  def replaceTypeElements(occurrences: Array[ScTypeElement], name: String, typeAlias: ScTypeAlias): Array[ScTypeElement] = {
-    def replaceHelper(typeElement: ScTypeElement, inName: String): ScTypeElement = {
-      val replacement = ScalaPsiElementFactory.createTypeElementFromText(inName, typeElement.getContext, typeElement)
-      //remove parethesis around typeElement
-      if (typeElement.getParent.isInstanceOf[ScParenthesisedTypeElement]) {
-        typeElement.getNextSibling.delete()
-        typeElement.getPrevSibling.delete()
-      }
-
-      //avoid replacing typeelement that was replaced
-      if (typeElement.calcType.presentableText == inName) {
-        typeElement
-      } else {
-        typeElement.replace(replacement).asInstanceOf[ScTypeElement]
-      }
-    }
-
-    def bindHelper(typeElement: ScTypeElement) = {
-      typeElement.getFirstChild.asInstanceOf[ScStableCodeReferenceElement].bindToElement(typeAlias)
-      typeElement
-    }
-
-    val replaced = occurrences.map(replaceHelper(_, name))
-    replaced.map(bindHelper)
-    //    occurrences
-  }
-
 
   def showTypeAliasChooser[T](editor: Editor, elements: Array[T], pass: T => Unit, title: String, elementName: T => String) {
     class Selection {
@@ -387,11 +369,11 @@ trait IntroduceTypeAlias {
     val dialog = new ScalaIntroduceTypeAliasDialog(project, typeElement, possibleScopes, mainScope, this, editor)
 
     this.showDialogImpl(dialog, occurrences).foreach { dialog =>
-      val occurrences = OccurrenceData(typeElement,
+      val occurrences = OccurrenceData(
+        dialog.getSelectedScope,
         dialog.isReplaceAllOccurrences,
         dialog.isReplaceOccurrenceIncompanionObject,
-        dialog.isReplaceOccurrenceInInheritors,
-        dialog.getSelectedScope
+        dialog.isReplaceOccurrenceInInheritors
       )
 
       runRefactoringForTypes(file,

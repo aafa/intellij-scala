@@ -160,7 +160,7 @@ abstract public class AbstractIntroduceVariableTestBase extends ActionTestBase {
           ScTypeElement typeElement = optionType.get();
           String typeName = getName(fileText);
 
-          ScopeItem[] scopes = ScopeSuggester.suggestScopes(introduceVariableHandler, project, myEditor, myFile, typeElement);
+          ScopeItem scope = ScopeSuggester.suggestScopes(introduceVariableHandler, project, myEditor, myFile, typeElement)[0];
 
 //          if (replaceOccurrencesFromInheritors) {
 //            ScTypeDefinition classOrTrait = PsiTreeUtil.getParentOfType(scopes.get(0).fileEncloser(), ScClass.class, ScTrait.class);
@@ -174,10 +174,10 @@ abstract public class AbstractIntroduceVariableTestBase extends ActionTestBase {
 //            }
 //          }
 
-          OccurrenceData occurrences = OccurrenceData.apply(typeElement, replaceAllOccurences,
-                  replaceCompanionObjOccurrences, replaceOccurrencesFromInheritors, scopes[0]);
+          OccurrenceData occurrences = OccurrenceData.apply(scope,
+                  replaceAllOccurences, replaceCompanionObjOccurrences, replaceOccurrencesFromInheritors);
 
-          introduceVariableHandler.runRefactoringForTypes(myFile, typeElement, typeName, occurrences, scopes[0], myEditor);
+          introduceVariableHandler.runRefactoringForTypes(myFile, typeElement, typeName, occurrences, scope, myEditor);
 
           result = removeTypenameComment(myEditor.getDocument().getText());
         }
