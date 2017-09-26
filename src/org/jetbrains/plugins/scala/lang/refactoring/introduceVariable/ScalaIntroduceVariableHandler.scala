@@ -5,12 +5,9 @@ package introduceVariable
 
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.command.impl.StartMarkAction
-import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.{Editor, SelectionModel}
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.util._
-import com.intellij.openapi.wm.WindowManager
 import com.intellij.psi._
 import com.intellij.psi.util.PsiTreeUtil.findElementOfClassAtOffset
 import com.intellij.refactoring.HelpID
@@ -23,9 +20,16 @@ import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil._
   * User: Alexander Podkhalyuzin
   * Date: 23.06.2008
   */
-class ScalaIntroduceVariableHandler extends ScalaRefactoringActionHandler with DialogConflictsReporter with IntroduceExpressions with IntroduceTypeAlias {
+class ScalaIntroduceVariableHandler extends ScalaRefactoringActionHandler with DialogConflictsReporter {
 
-  private var occurrenceHighlighters = Seq.empty[RangeHighlighter]
+  val introduceExpressions = new IntroduceExpressions(this)
+  val introduceTypeAlias = new IntroduceTypeAlias(this)
+
+  def introduceExpression(expression: PsiElement)
+                         (implicit project: Project, editor: Editor): Unit = {
+    val range = expression.getTextRange
+    introduceExpressions.invokeExpression(expression.getContainingFile, range.getStartOffset, range.getEndOffset)
+  }
 
   override def invoke(file: PsiFile)
                      (implicit project: Project, editor: Editor, dataContext: DataContext): Unit = {
@@ -48,7 +52,7 @@ class ScalaIntroduceVariableHandler extends ScalaRefactoringActionHandler with D
     }
 
     if (selectionModel.hasSelection && maybeSelectedElement.isEmpty) {
-      showErrorHint(ScalaBundle.message("cannot.refactor.not.expression.nor.type"), INTRODUCE_VARIABLE_REFACTORING_NAME, HelpID.INTRODUCE_VARIABLE)
+      showErrorHint(ScalaBundle.message("cannot.refactor.not.expression.nor.type"), introduceExpressions.refactoringName, HelpID.INTRODUCE_VARIABLE)
       return
     }
 
@@ -65,38 +69,15 @@ class ScalaIntroduceVariableHandler extends ScalaRefactoringActionHandler with D
 
     maybeTypeElement match {
       case Some(typeElement) if editor.getUserData(REVERT_TYPE_ALIAS_INFO).isData =>
-        invokeTypeElement(file, typeElement)
+        introduceTypeAlias.invokeTypeElement(file, typeElement)
       case Some(typeElement) =>
-        afterTypeElementChoosing(typeElement, INTRODUCE_TYPEALIAS_REFACTORING_NAME) {
-          invokeTypeElement(file, _)
+        afterTypeElementChoosing(typeElement, introduceTypeAlias.refactoringName) {
+          introduceTypeAlias.invokeTypeElement(file, _)
         }
       case _ =>
-        afterExpressionChoosing(file, INTRODUCE_VARIABLE_REFACTORING_NAME) {
-          invokeExpression(file, selectionModel.getSelectionStart, selectionModel.getSelectionEnd)
+        afterExpressionChoosing(file, introduceExpressions.refactoringName) {
+          introduceExpressions.invokeExpression(file, selectionModel.getSelectionStart, selectionModel.getSelectionEnd)
         }
-    }
-  }
-
-  protected def showDialogImpl[D <: DialogWrapper](dialog: D,
-                                                   occurrences: Seq[TextRange])
-                                                  (implicit project: Project, editor: Editor): Option[D] = {
-    val multipleOccurrences = occurrences.length > 1
-    if (multipleOccurrences) {
-      occurrenceHighlighters = highlightOccurrences(project, occurrences, editor)
-    }
-
-    dialog.show()
-    if (dialog.isOK) Some(dialog) else {
-      if (multipleOccurrences) {
-        WindowManager.getInstance
-          .getStatusBar(project)
-          .setInfo(ScalaBundle.message("press.escape.to.remove.the.highlighting"))
-      }
-
-      occurrenceHighlighters.foreach(_.dispose())
-      occurrenceHighlighters = Seq.empty
-
-      None
     }
   }
 }

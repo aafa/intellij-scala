@@ -1,4 +1,6 @@
-package org.jetbrains.plugins.scala.refactoring.introduceVariable
+package org.jetbrains.plugins.scala
+package refactoring
+package introduceVariable
 
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.{FileEditorManager, OpenFileDescriptor}
@@ -6,7 +8,6 @@ import com.intellij.openapi.module.{Module, ModuleManager}
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.util.PsiTreeUtil
-import org.jetbrains.plugins.scala.SlowTests
 import org.jetbrains.plugins.scala.base.libraryLoaders.{JdkLoader, ScalaLibraryLoader}
 import org.jetbrains.plugins.scala.debugger.{ScalaSdkOwner, ScalaVersion, Scala_2_10}
 import org.jetbrains.plugins.scala.lang.actions.ActionTestBase
@@ -86,7 +87,8 @@ class IntroduceVariableTest extends ActionTestBase(Option(System.getProperty("pa
           }
 
           val occurrencesInFile = IntroduceExpressions.OccurrencesInFile(psiFile, new TextRange(startOffset, endOffset), getOccurrenceRanges(selectedExpr, psiFile))
-          introduceVariableHandler.runRefactoring(occurrencesInFile, selectedExpr, "value", types.head, replaceAllOccurrences, isVariable = false)
+          introduceVariableHandler.introduceExpressions
+            .runRefactoring(occurrencesInFile, selectedExpr, "value", types.head, replaceAllOccurrences, isVariable = false)
 
           editor.getDocument.getText
         case _: ScTypeElement =>
@@ -98,7 +100,8 @@ class IntroduceVariableTest extends ActionTestBase(Option(System.getProperty("pa
           val typeName = getName(fileText)
           val scope = ScopeSuggester.suggestScopes(introduceVariableHandler, project, editor, psiFile, typeElement)(0)
           val occurrences = OccurrenceData(scope, replaceAllOccurrences, replaceCompanionObjOccurrences, replaceOccurrencesFromInheritors)
-          introduceVariableHandler.runRefactoringForTypes(psiFile, typeElement, typeName, occurrences, scope)
+          introduceVariableHandler.introduceTypeAlias
+            .runRefactoringForTypes(psiFile, typeElement, typeName, occurrences, scope)
 
           removeTypenameComment(editor.getDocument.getText)
         case _ =>

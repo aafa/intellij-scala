@@ -2,7 +2,6 @@ package org.jetbrains.plugins.scala.lang.refactoring.introduceVariable
 
 import java.{util => ju}
 
-import com.intellij.internal.statistic.UsageTrigger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.{Pass, TextRange}
@@ -13,7 +12,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.PsiTreeUtil.findElementOfClassAtOffset
 import com.intellij.refactoring.introduce.inplace.OccurrencesChooser
 import org.jetbrains.plugins.scala.ScalaBundle
-import org.jetbrains.plugins.scala.extensions.{PsiElementExt, childOf, inWriteAction, startCommand}
+import org.jetbrains.plugins.scala.extensions.{PsiElementExt, childOf, inWriteAction}
 import org.jetbrains.plugins.scala.lang.lexer.ScalaTokenTypes
 import org.jetbrains.plugins.scala.lang.psi.ScalaPsiUtil
 import org.jetbrains.plugins.scala.lang.psi.api.expr._
@@ -25,35 +24,33 @@ import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory._
 import org.jetbrains.plugins.scala.lang.psi.types.ScType
 import org.jetbrains.plugins.scala.lang.refactoring.namesSuggester.NameSuggester
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil._
-import org.jetbrains.plugins.scala.lang.refactoring.util.{ScalaRefactoringUtil, ScalaVariableValidator, ValidationReporter}
+import org.jetbrains.plugins.scala.lang.refactoring.util.{ConflictsReporter, ScalaRefactoringUtil, ScalaVariableValidator, ValidationReporter}
 import org.jetbrains.plugins.scala.project.ProjectContext
 
 /**
   * Created by Kate Ustyuzhanina
   * on 9/18/15
   */
-trait IntroduceExpressions {
-  this: ScalaIntroduceVariableHandler =>
+class IntroduceExpressions(protected val conflictsReporter: ConflictsReporter)
+  extends IntroduceElement[ScExpression] {
 
-  val INTRODUCE_VARIABLE_REFACTORING_NAME: String = ScalaBundle.message("introduce.variable.title")
+  override protected val refactoringKey: String = "introduce.variable.title"
+  override protected val triggerKey: String = "introduce.variable.id"
 
   import IntroduceExpressions._
 
   def invokeExpression(file: PsiFile, startOffset: Int, endOffset: Int)
                       (implicit project: Project, editor: Editor): Unit = {
     try {
-      UsageTrigger.trigger(ScalaBundle.message("introduce.variable.id"))
-
-      PsiDocumentManager.getInstance(project).commitAllDocuments()
-      writableScalaFile(file, INTRODUCE_VARIABLE_REFACTORING_NAME)
+      trigger(file)
 
       val (expr, types) = getExpressionWithTypes(file, startOffset, endOffset).getOrElse {
-        showErrorHint(ScalaBundle.message("cannot.refactor.not.expression"), INTRODUCE_VARIABLE_REFACTORING_NAME)
+        showErrorHint(ScalaBundle.message("cannot.refactor.not.expression"), refactoringName)
         return
       }
 
       checkCanBeIntroduced(expr).foreach { message =>
-        showErrorHint(message, INTRODUCE_VARIABLE_REFACTORING_NAME)
+        showErrorHint(message, refactoringName)
         return
       }
 
@@ -77,12 +74,10 @@ trait IntroduceExpressions {
 
   def runRefactoring(occurrences: OccurrencesInFile, expression: ScExpression, varName: String, varType: ScType,
                      replaceAllOccurrences: Boolean, isVariable: Boolean)
-                    (implicit editor: Editor): Unit = {
-    startCommand(editor.getProject, INTRODUCE_VARIABLE_REFACTORING_NAME) {
+                    (implicit editor: Editor): Unit =
+    runRefactoringWithSelection {
       runRefactoringInside(occurrences, expression, varName, varType, replaceAllOccurrences, isVariable, fromDialogMode = true) // this for better debug
     }
-    editor.getSelectionModel.removeSelection()
-  }
 
   private def runInplace(suggestedNames: SuggestedNames, occurrences: OccurrencesInFile)
                         (implicit project: Project, editor: Editor): Unit = {
@@ -91,7 +86,7 @@ trait IntroduceExpressions {
     val callback: Pass[ReplaceChoice] = (replaceChoice: ReplaceChoice) => {
       val replaceAll = ReplaceChoice.NO != replaceChoice
 
-      startCommand(project, INTRODUCE_VARIABLE_REFACTORING_NAME) {
+      runRefactoring {
         val SuggestedNames(expression, types, names) = suggestedNames
         val reference = inWriteAction {
           runRefactoringInside(occurrences, expression, names.head, types.head, replaceAll, isVariable = false, fromDialogMode = false)
@@ -117,15 +112,40 @@ trait IntroduceExpressions {
     val occurrences_ = occurrences.occurrences
 
     val SuggestedNames(expression, types, names) = suggestedNames
-    val dialog = new ScalaIntroduceVariableDialog(project, types, occurrences_.length, new ValidationReporter(project, this), names, expression)
+    val dialog = new ScalaIntroduceVariableDialog(project, types, occurrences_.length, new ValidationReporter(project, conflictsReporter), names, expression)
 
-    this.showDialogImpl(dialog, occurrences_).foreach { dialog =>
+    showDialog(dialog, occurrences_).foreach { dialog =>
       runRefactoring(occurrences, suggestedNames.expression,
         varName = dialog.getEnteredName,
         varType = dialog.getSelectedType,
         replaceAllOccurrences = dialog.isReplaceAllOccurrences,
         isVariable = dialog.isDeclareVariable
       )
+    }
+  }
+
+  private def performInplaceRefactoring(newDeclaration: PsiElement,
+                                        maybeType: Option[ScType],
+                                        replaceAll: Boolean,
+                                        forceType: Boolean,
+                                        suggestedNames: Array[String])
+                                       (implicit project: Project, editor: Editor): Unit = {
+    val maybeNamedElement = newDeclaration match {
+      case holder: ScDeclaredElementsHolder => holder.declaredElements.headOption
+      case enum: ScEnumerator => enum.pattern.bindings.headOption
+      case _ => None
+    }
+
+    val newExpr = newDeclaration match {
+      case ScVariableDefinition.expr(x) => x
+      case ScPatternDefinition.expr(x) => x
+      case enum: ScEnumerator => enum.rvalue
+      case _ => null
+    }
+
+    IntroduceElement.withElement(maybeNamedElement) { named =>
+      new ScalaInplaceVariableIntroducer(newExpr, maybeType, named, replaceAll, forceType)
+        .performInplaceRefactoring(new ju.LinkedHashSet(ju.Arrays.asList(suggestedNames: _*)))
     }
   }
 }
@@ -147,42 +167,6 @@ object IntroduceExpressions {
   }
 
   case class OccurrencesInFile(file: PsiFile, mainRange: TextRange, occurrences: Seq[TextRange])
-
-  private def performInplaceRefactoring(newDeclaration: PsiElement,
-                                        maybeType: Option[ScType],
-                                        replaceAll: Boolean,
-                                        forceType: Boolean,
-                                        suggestedNames: Array[String])
-                                       (implicit project: Project, editor: Editor): Unit = {
-    val maybeNamedElement = newDeclaration match {
-      case holder: ScDeclaredElementsHolder => holder.declaredElements.headOption
-      case enum: ScEnumerator => enum.pattern.bindings.headOption
-      case _ => None
-    }
-
-    val newExpr = newDeclaration match {
-      case ScVariableDefinition.expr(x) => x
-      case ScPatternDefinition.expr(x) => x
-      case enum: ScEnumerator => enum.rvalue
-      case _ => null
-    }
-
-    maybeNamedElement.filter(_.isValid).foreach { named =>
-      editor.getCaretModel.moveToOffset(named.getTextOffset)
-      editor.getSelectionModel.removeSelection()
-
-      if (isInplaceAvailable(editor)) {
-        (editor.getDocument, PsiDocumentManager.getInstance(project)) match {
-          case (document, manager) =>
-            manager.commitDocument(document)
-            manager.doPostponedOperationsAndUnblockDocument(document)
-        }
-
-        new ScalaInplaceVariableIntroducer(newExpr, maybeType, named, replaceAll, forceType)
-          .performInplaceRefactoring(new ju.LinkedHashSet(ju.Arrays.asList(suggestedNames: _*)))
-      }
-    }
-  }
 
   private def forceInferType(expression: ScExpression) = expression.isInstanceOf[ScFunctionExpr]
 
@@ -290,7 +274,7 @@ object IntroduceExpressions {
             if forceType && block.statements.size == 1 => Seq(infix)
           case expr => Seq(expr)
         }
-      else replacedOccurences.toSeq.map(findParentExpr(file, _))
+      else replacedOccurences.map(findParentExpr(file, _))
     val commonParent: PsiElement = PsiTreeUtil.findCommonParent(parentExprs: _*)
 
     val nextParentInFile = nextParent(commonParent, file)

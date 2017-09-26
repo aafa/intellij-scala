@@ -16,11 +16,9 @@ class ScalaIntroduceVariablePostfixTemplate extends PostfixTemplateWithExpressio
 
   override def expandForChooseExpression(expression: PsiElement, editor: Editor): Unit = {
     val range = expression.getTextRange
-    val startOffset = range.getStartOffset
-    val endOffset = range.getEndOffset
+    editor.getSelectionModel.setSelection(range.getStartOffset, range.getEndOffset)
 
-    editor.getSelectionModel.setSelection(startOffset, endOffset)
     new ScalaIntroduceVariableHandler()
-      .invokeExpression(expression.getContainingFile, startOffset, endOffset)(expression.getProject, editor)
+      .introduceExpression(expression)(expression.getProject, editor)
   }
 }
