@@ -44,14 +44,17 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
       trigger(file)
 
       if (isInvalid(inTypeElement)) {
-        showErrorHintWithException(ScalaBundle.message("cannot.refactor.not.valid.type"), refactoringName)
+        showErrorHint(ScalaBundle.message("cannot.refactor.not.valid.type"), refactoringName)
+        return
       }
 
       val currentDataObject = IntroduceTypeAliasData.find.get
 
       if (currentDataObject.possibleScopes == null) {
         ScopeSuggester.suggestScopes(conflictsReporter, project, editor, file, inTypeElement) match {
-          case Array() => showErrorHintWithException(ScalaBundle.message("cannot.refactor.scope.not.found"), refactoringName)
+          case Array() =>
+            showErrorHint(ScalaBundle.message("cannot.refactor.scope.not.found"), refactoringName)
+            return
           case scopes => currentDataObject.possibleScopes = scopes
         }
       }

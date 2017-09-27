@@ -1,7 +1,6 @@
 package org.jetbrains.plugins.scala
 package lang.refactoring.introduceField
 
-import com.intellij.psi.PsiElement
 import org.jetbrains.plugins.scala.lang.psi.types.ScType
 import org.jetbrains.plugins.scala.settings.ScalaApplicationSettings
 
@@ -9,7 +8,7 @@ import org.jetbrains.plugins.scala.settings.ScalaApplicationSettings
  * Nikolay.Tropin
  * 7/16/13
  */
-class IntroduceFieldSettings[T <: PsiElement](ifc: IntroduceFieldContext[T]) {
+class IntroduceFieldSettings(ifc: IntroduceFieldContext) {
   private val scalaSettings = ScalaApplicationSettings.getInstance()
   private[this] var isVar = scalaSettings.INTRODUCE_FIELD_IS_VAR
   private[this] var replAll = scalaSettings.INTRODUCE_FIELD_REPLACE_ALL

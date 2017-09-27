@@ -3,19 +3,13 @@ package lang.refactoring.extractTrait
 
 import java.util
 
-import com.intellij.codeInsight.navigation.NavigationUtil
-import com.intellij.ide.util.PsiClassListCellRenderer
-import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.{ProjectFileIndex, ProjectRootManager}
 import com.intellij.openapi.util.Comparing
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi._
-import com.intellij.psi.search.PsiElementProcessor
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.util.RefactoringMessageUtil
 import org.jetbrains.plugins.scala.extensions.PsiElementExt
-import org.jetbrains.plugins.scala.lang.psi.ScalaPsiUtil
 import org.jetbrains.plugins.scala.lang.psi.api.base.ScPrimaryConstructor
 import org.jetbrains.plugins.scala.lang.psi.api.base.types.ScSimpleTypeElement
 import org.jetbrains.plugins.scala.lang.psi.api.expr.ScNewTemplateDefinition
@@ -23,7 +17,6 @@ import org.jetbrains.plugins.scala.lang.psi.api.statements._
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.templates.ScTemplateParents
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef.{ScMember, ScTemplateDefinition, ScTypeDefinition}
 import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory.createClassTemplateParents
-import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.IntroduceException
 
 import scala.collection.JavaConverters._
 
@@ -32,36 +25,6 @@ import scala.collection.JavaConverters._
  * 2014-05-20
  */
 object ExtractSuperUtil {
-  def afterClassChoosing(element: PsiElement,
-                         project: Project,
-                         editor: Editor,
-                         file: PsiFile,
-                         isSuitableClass: PsiClass => Boolean)
-                        (action: => Unit) {
-    try {
-      val classes = ScalaPsiUtil.getParents(element, file).collect {
-        case t: ScTemplateDefinition if isSuitableClass(t) => t
-      }.toArray[PsiClass]
-      classes.size match {
-        case 0 =>
-        case 1 => action
-        case _ =>
-          val selection = classes(0)
-          val processor = new PsiElementProcessor[PsiClass] {
-            def execute(aClass: PsiClass): Boolean = {
-              action
-              false
-            }
-          }
-          NavigationUtil.getPsiElementPopup(classes, new PsiClassListCellRenderer() {
-            override def getElementText(element: PsiClass): String = super.getElementText(element).replace("$", "")
-          }, "Choose class", processor, selection).showInBestPositionFor(editor)
-      }
-    }
-    catch {
-      case _: IntroduceException => return
-    }
-  }
 
   def classPresentableName(clazz: ScTemplateDefinition): String = {
     clazz match {

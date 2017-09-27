@@ -36,7 +36,7 @@ import org.jetbrains.plugins.scala.lang.psi.api.statements.{ScFunction, ScFuncti
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.templates.{ScExtendsBlock, ScTemplateBody, ScTemplateParents}
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef._
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.{ScEarlyDefinitions, ScTypeParametersOwner}
-import org.jetbrains.plugins.scala.lang.psi.api.{ScControlFlowOwner, ScalaFile, ScalaRecursiveElementVisitor}
+import org.jetbrains.plugins.scala.lang.psi.api.{ScControlFlowOwner, ScalaFile}
 import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory._
 import org.jetbrains.plugins.scala.lang.psi.stubs.util.ScalaStubsUtil
 import org.jetbrains.plugins.scala.lang.psi.types.ScType
@@ -991,8 +991,7 @@ object ScalaRefactoringUtil {
     revercedRangeMarkers.reverseMap(rm => new TextRange(rm.getStartOffset, rm.getEndOffset))
   }
 
-  def statementsAndMembersInClass(aClass: ScTemplateDefinition): Seq[PsiElement] = {
-    val extendsBlock = aClass.extendsBlock
+  def statementsAndMembersInClass(extendsBlock: ScExtendsBlock): Seq[PsiElement] = {
     if (extendsBlock == null) return Nil
     val body = extendsBlock.templateBody
     val earlyDefs = extendsBlock.earlyDefinitions
@@ -1056,26 +1055,6 @@ object ScalaRefactoringUtil {
         }
       case _ => false
     }
-  }
-
-
-  def checkForwardReferences(expr: ScExpression, position: PsiElement): Boolean = {
-    var result = true
-    val visitor = new ScalaRecursiveElementVisitor() {
-      override def visitReferenceExpression(ref: ScReferenceExpression) {
-        ref.getParent match {
-          case ScInfixExpr(_, `ref`, _) =>
-          case ScPostfixExpr(_, `ref`) =>
-          case ScPrefixExpr(`ref`, _) =>
-          case _ =>
-            val newRef = createExpressionFromText(ref.getText, position).asInstanceOf[ScReferenceExpression]
-            result &= ref.resolve() == newRef.resolve()
-        }
-        super.visitReferenceExpression(ref)
-      }
-    }
-    expr.accept(visitor)
-    result
   }
 
   @tailrec

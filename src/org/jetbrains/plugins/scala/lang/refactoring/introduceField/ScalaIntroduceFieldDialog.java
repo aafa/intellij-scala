@@ -18,7 +18,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.scala.ScalaBundle;
 import org.jetbrains.plugins.scala.ScalaFileType;
 import org.jetbrains.plugins.scala.lang.psi.api.expr.ScExpression;
-import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef.ScTemplateDefinition;
+import org.jetbrains.plugins.scala.lang.psi.api.toplevel.templates.ScExtendsBlock;
 import org.jetbrains.plugins.scala.lang.psi.types.ScType;
 import org.jetbrains.plugins.scala.lang.refactoring.util.NamedDialog;
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil;
@@ -70,23 +70,23 @@ public class ScalaIntroduceFieldDialog extends DialogWrapper implements NamedDia
   private int occurrencesCount;
   private ValidationReporter reporter;
   private IntroduceFieldSettings mySettings;
-  private ScTemplateDefinition myClass;
+  private ScExtendsBlock myExtendsBlock;
 
   private LinkedHashMap<String, ScType> myTypeMap = null;
   private EventListenerList myListenerList = new EventListenerList();
 
   private static final String REFACTORING_NAME = ScalaBundle.message("introduce.field.title");
 
-  public ScalaIntroduceFieldDialog(IntroduceFieldContext<ScExpression> ifc, IntroduceFieldSettings<ScExpression> settings) {
+  public ScalaIntroduceFieldDialog(IntroduceFieldContext ifc, IntroduceFieldSettings settings) {
     super(ifc.project(), true);
     this.project = ifc.project();
     this.myTypes = ifc.types();
     this.occurrencesCount = ifc.occurrences().size();
     this.reporter = ifc.reporter();
     this.mySettings = settings;
-    this.myClass = ifc.aClass();
+    this.myExtendsBlock = ifc.extendsBlock();
 
-    ScExpression expression = ScalaRefactoringUtil.expressionToIntroduce(ifc.element());
+    ScExpression expression = ScalaRefactoringUtil.expressionToIntroduce(ifc.expression());
 
     setModal(true);
     getRootPane().setDefaultButton(buttonOK);
@@ -314,7 +314,7 @@ public class ScalaIntroduceFieldDialog extends DialogWrapper implements NamedDia
   private boolean needsTypeAnnotation(ScExpression expression) {
     return ScalaTypeAnnotationSettings$.MODULE$.apply(expression.getProject()).isTypeAnnotationRequiredFor(
         Declaration$.MODULE$.apply(Visibility$.MODULE$.apply(getVisibility()), false, false, false),
-        Location$.MODULE$.apply(myClass), Some$.MODULE$.apply(Implementation$.MODULE$.apply(expression)));
+            Location$.MODULE$.apply(myExtendsBlock), Some$.MODULE$.apply(Implementation$.MODULE$.apply(expression)));
   }
 
   private void setUpTypeComboBox(final ScExpression expression) {
