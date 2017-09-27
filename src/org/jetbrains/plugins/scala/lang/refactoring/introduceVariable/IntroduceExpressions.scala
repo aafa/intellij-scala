@@ -31,11 +31,10 @@ import org.jetbrains.plugins.scala.project.ProjectContext
   * Created by Kate Ustyuzhanina
   * on 9/18/15
   */
-class IntroduceExpressions(protected val conflictsReporter: ConflictsReporter)
-  extends IntroduceElement[ScExpression] {
+class IntroduceExpressions(private val conflictsReporter: ConflictsReporter) extends IntroduceElement {
 
-  override protected val refactoringKey: String = "introduce.variable.title"
-  override protected val triggerKey: String = "introduce.variable.id"
+  override private[refactoring] val refactoringName: String = ScalaBundle.message("introduce.variable.title")
+  override protected val triggerName: String = ScalaBundle.message("introduce.variable.id")
 
   import IntroduceExpressions._
 

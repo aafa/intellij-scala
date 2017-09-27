@@ -77,16 +77,16 @@ public class ScalaIntroduceFieldDialog extends DialogWrapper implements NamedDia
 
   private static final String REFACTORING_NAME = ScalaBundle.message("introduce.field.title");
 
-  public ScalaIntroduceFieldDialog(IntroduceFieldContext ifc, IntroduceFieldSettings settings) {
+  public ScalaIntroduceFieldDialog(IntroduceFieldContext ifc, IntroduceFieldSettings settings, ScType[] types) {
     super(ifc.project(), true);
     this.project = ifc.project();
-    this.myTypes = ifc.types();
+    this.myTypes = types;
     this.occurrencesCount = ifc.occurrences().size();
     this.reporter = ifc.reporter();
     this.mySettings = settings;
     this.myExtendsBlock = ifc.extendsBlock();
 
-    ScExpression expression = ScalaRefactoringUtil.expressionToIntroduce(ifc.expression());
+    ScExpression expression = ifc.expression();
 
     setModal(true);
     getRootPane().setDefaultButton(buttonOK);

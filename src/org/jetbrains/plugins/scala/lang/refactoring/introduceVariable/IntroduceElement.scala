@@ -12,17 +12,12 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.psi.{PsiDocumentManager, PsiElement, PsiFile}
 import org.jetbrains.plugins.scala.extensions.startCommand
-import org.jetbrains.plugins.scala.lang.psi.ScalaPsiElement
-import org.jetbrains.plugins.scala.lang.refactoring.util.ConflictsReporter
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.{highlightOccurrences, isInplaceAvailable, writableScalaFile}
 
-trait IntroduceElement[E <: ScalaPsiElement] {
+trait IntroduceElement {
 
-  protected val refactoringKey: String
-  protected val triggerKey: String
-  val refactoringName: String = ScalaBundle.message(refactoringKey)
-
-  protected val conflictsReporter: ConflictsReporter
+  private[refactoring] val refactoringName: String
+  protected val triggerName: String
 
   private var occurrenceHighlighters = Seq.empty[RangeHighlighter]
 
@@ -39,7 +34,7 @@ trait IntroduceElement[E <: ScalaPsiElement] {
 
   protected def trigger(file: PsiFile)
                        (implicit project: Project, editor: Editor): Unit = {
-    UsageTrigger.trigger(ScalaBundle.message(triggerKey))
+    UsageTrigger.trigger(triggerName)
 
     PsiDocumentManager.getInstance(project).commitAllDocuments()
     writableScalaFile(file, refactoringName)

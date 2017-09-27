@@ -103,8 +103,8 @@ class IntroduceFieldTests extends ScalaLightPlatformCodeInsightTestCaseAdapter {
         case clazz: ScTemplateDefinition => clazz
       }.apply(selectedClassNumber)
 
-      val ifc = new IntroduceFieldContext(scalaFile, expr, types, aClass)
-      val settings = new IntroduceFieldSettings(ifc)
+      val ifc = new IntroduceFieldContext(scalaFile, expr, aClass)
+      val settings = new IntroduceFieldSettings(ifc, types.head)
       settings.replaceAll = replaceAll
       initInDecl.foreach(settings.initInDeclaration = _)
       settings.defineVar = true

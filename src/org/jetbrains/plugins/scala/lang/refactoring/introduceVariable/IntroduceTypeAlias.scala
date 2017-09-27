@@ -32,11 +32,10 @@ import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil._
 import org.jetbrains.plugins.scala.lang.refactoring.util.{ConflictsReporter, DefaultListCellRendererAdapter, ScalaDirectoryService}
 import org.jetbrains.plugins.scala.util.JListCompatibility
 
-class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
-  extends IntroduceElement[ScTypeAlias] {
+class IntroduceTypeAlias(private val conflictsReporter: ConflictsReporter) extends IntroduceElement {
 
-  override protected val refactoringKey: String = "introduce.type.alias.title"
-  override protected val triggerKey: String = "introduce.type.alias.id"
+  override private[refactoring] val refactoringName: String = ScalaBundle.message("introduce.type.alias.title")
+  override protected val triggerName: String = ScalaBundle.message("introduce.type.alias.id")
 
   def invokeTypeElement(file: PsiFile, inTypeElement: ScTypeElement)
                        (implicit project: Project, editor: Editor): Unit = {

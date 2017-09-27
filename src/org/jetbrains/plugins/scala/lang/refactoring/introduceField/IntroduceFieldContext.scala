@@ -1,5 +1,7 @@
 package org.jetbrains.plugins.scala
-package lang.refactoring.introduceField
+package lang
+package refactoring
+package introduceField
 
 import java.{util => ju}
 
@@ -13,7 +15,6 @@ import org.jetbrains.plugins.scala.lang.psi.api.expr._
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.templates.ScExtendsBlock
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef.ScTemplateDefinition
 import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory.createExpressionFromText
-import org.jetbrains.plugins.scala.lang.psi.types.ScType
 import org.jetbrains.plugins.scala.lang.refactoring.namesSuggester.NameSuggester.suggestNames
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil._
 import org.jetbrains.plugins.scala.lang.refactoring.util.{DialogConflictsReporter, ScalaVariableValidator, ValidationReporter}
@@ -24,33 +25,33 @@ import scala.collection.JavaConverters._
   * Nikolay.Tropin
   * 7/15/13
   */
-case class IntroduceFieldContext(file: PsiFile,
-                                 expression: ScExpression,
-                                 types: Array[ScType],
-                                 extendsBlock: ScExtendsBlock)
-                                (implicit val project: Project, val editor: Editor) {
+class IntroduceFieldContext(val file: PsiFile,
+                            private val originalExpression: ScExpression,
+                            val extendsBlock: ScExtendsBlock)
+                           (implicit val project: Project, val editor: Editor) {
 
   def this(file: PsiFile,
            expression: ScExpression,
-           types: Array[ScType],
            clazz: ScTemplateDefinition)
           (implicit project: Project, editor: Editor) =
-    this(file, expression, types, clazz.extendsBlock)
+    this(file, expression, clazz.extendsBlock)
 
-  val occurrences: Seq[TextRange] = getOccurrenceRanges(expression, extendsBlock)
+  val occurrences: Seq[TextRange] = getOccurrenceRanges(originalExpression, extendsBlock)
 
-  private implicit val validator: ScalaVariableValidator = ScalaVariableValidator(file, expression, occurrences)
+  val expression: ScExpression = expressionToIntroduce(originalExpression)
+
+  private implicit val validator: ScalaVariableValidator = ScalaVariableValidator(file, originalExpression, occurrences)
 
   val reporter: ValidationReporter = new ValidationReporter(project, new DialogConflictsReporter {})
 
   private val statementsAndMembers: Seq[PsiElement] = statementsAndMembersInClass(extendsBlock)
 
-  val canBeInitInDecl: Boolean = find(expression).forall(checkForwardReferences)
+  val canBeInitInDecl: Boolean = find(originalExpression).forall(checkForwardReferences)
 
-  val possibleNames: ju.Set[String] = suggestNames(expression).toSet[String].asJava
+  val possibleNames: ju.Set[String] = suggestNames(originalExpression).toSet[String].asJava
 
   def canBeInitLocally(replaceAll: Boolean): Boolean = {
-    val occurrences = if (replaceAll) this.occurrences else Seq(expression.getTextRange)
+    val occurrences = if (replaceAll) this.occurrences else Seq(originalExpression.getTextRange)
 
     val parExpr = findParentExpr(commonParent(file, occurrences))
     val parents = container(parExpr, file).withParentsInFile
@@ -64,7 +65,7 @@ case class IntroduceFieldContext(file: PsiFile,
       .find(statementsAndMembers.contains(_))
 
   private def checkForwardReferences(position: PsiElement): Boolean =
-    IntroduceFieldContext.checkForwardReferences(expression, position)
+    IntroduceFieldContext.checkForwardReferences(originalExpression, position)
 }
 
 object IntroduceFieldContext {

@@ -8,7 +8,7 @@ import org.jetbrains.plugins.scala.settings.ScalaApplicationSettings
  * Nikolay.Tropin
  * 7/16/13
  */
-class IntroduceFieldSettings(ifc: IntroduceFieldContext) {
+class IntroduceFieldSettings(ifc: IntroduceFieldContext, `type`: ScType) {
   private val scalaSettings = ScalaApplicationSettings.getInstance()
   private[this] var isVar = scalaSettings.INTRODUCE_FIELD_IS_VAR
   private[this] var replAll = scalaSettings.INTRODUCE_FIELD_REPLACE_ALL
@@ -28,7 +28,7 @@ class IntroduceFieldSettings(ifc: IntroduceFieldContext) {
   val canBeInitLocally: Boolean = canBeInitLocalIfReplaceAll || canBeInitLocalOneOccurrence
 
   var name: String = ifc.possibleNames.iterator().next()
-  var scType: ScType = ifc.types(0)
+  var scType: ScType = `type`
   def setName(s: String) {name = s}
   def setType(t: ScType) {scType = t}
 
