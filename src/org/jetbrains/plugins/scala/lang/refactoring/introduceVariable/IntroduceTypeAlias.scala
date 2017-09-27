@@ -29,7 +29,7 @@ import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef.{ScObject, ScTy
 import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory
 import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory.createTypeElementFromText
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil._
-import org.jetbrains.plugins.scala.lang.refactoring.util.{ConflictsReporter, DefaultListCellRendererAdapter, ScalaDirectoryService, ScalaRefactoringUtil}
+import org.jetbrains.plugins.scala.lang.refactoring.util.{ConflictsReporter, DefaultListCellRendererAdapter, ScalaDirectoryService}
 import org.jetbrains.plugins.scala.util.JListCompatibility
 
 class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
@@ -127,7 +127,7 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
       Option(TemplateManagerImpl.getTemplateState(InjectedLanguageUtil.getTopLevelEditor(editor)))
         .foreach(_.gotoEnd())
 
-      ScalaInplaceTypeAliasIntroducer.revertState(editor, currentDataObject.currentScope, currentDataObject.typeAlias)
+      ScalaInplaceTypeAliasIntroducer.revertState
 
       localRunWithDialog()
     } else {
@@ -163,8 +163,7 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
       resultTypeAlias
     }
 
-    val revertInfo = ScalaRefactoringUtil.RevertInfo(file.getText, editor.getCaretModel.getOffset)
-    editor.putUserData(ScalaIntroduceVariableHandler.REVERT_INFO, revertInfo)
+    RevertInfo.put(file.getText)
 
     val parent = scope match {
       case simpleScope: SimpleScopeItem => simpleScope.fileEncloser

@@ -1,14 +1,14 @@
 package org.jetbrains.plugins.scala.lang.refactoring.introduceVariable
 
-import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.command.undo.UndoManager
 import com.intellij.openapi.editor.{Editor, ScrollType}
 import com.intellij.psi._
 import com.intellij.refactoring.RefactoringActionHandler
-import org.jetbrains.plugins.scala.extensions
+import org.jetbrains.plugins.scala.extensions.{inWriteAction, startCommand}
 import org.jetbrains.plugins.scala.lang.psi.api.statements.ScTypeAliasDefinition
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.ScNamedElement
 import org.jetbrains.plugins.scala.lang.refactoring.rename.inplace.ScalaMemberInplaceRenamer
+import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.RevertInfo
 
 /**
  * Created by Kate Ustyuzhanina
@@ -16,27 +16,28 @@ import org.jetbrains.plugins.scala.lang.refactoring.rename.inplace.ScalaMemberIn
  */
 object ScalaInplaceTypeAliasIntroducer {
 
-  def revertState(myEditor: Editor, scopeItem: ScopeItem, namedElement: ScNamedElement): Unit = {
-    val myProject = myEditor.getProject
-    CommandProcessor.getInstance.executeCommand(myProject, new Runnable {
-      def run() {
-        val revertInfo = myEditor.getUserData(ScalaIntroduceVariableHandler.REVERT_INFO)
-        val document = myEditor.getDocument
-        if (revertInfo != null) {
-          extensions.inWriteAction {
-            document.replaceString(0, document.getTextLength, revertInfo.fileText)
-            PsiDocumentManager.getInstance(myProject).commitDocument(document)
+  def revertState(implicit editor: Editor): Unit = {
+    val project = editor.getProject
+    val manager = PsiDocumentManager.getInstance(project)
+
+    startCommand(project, () => {
+      val document = editor.getDocument
+      RevertInfo.find.foreach {
+        case RevertInfo(fileText, caretOffset) =>
+          inWriteAction {
+            document.replaceString(0, document.getTextLength, fileText)
+            manager.commitDocument(document)
           }
-          val offset = revertInfo.caretOffset
-          myEditor.getCaretModel.moveToOffset(offset)
-          myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
-          PsiDocumentManager.getInstance(myEditor.getProject).commitDocument(document)
-        }
-        if (!myProject.isDisposed && myProject.isOpen) {
-          PsiDocumentManager.getInstance(myProject).commitDocument(document)
-        }
+
+          editor.getCaretModel.moveToOffset(caretOffset)
+          editor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
+
+          manager.commitDocument(document)
       }
-    }, "Introduce Type Alias", null)
+      if (!project.isDisposed && project.isOpen) {
+        manager.commitDocument(document)
+      }
+    }, "Introduce Type Alias")
   }
 }
 
@@ -65,14 +66,14 @@ class ScalaInplaceTypeAliasIntroducer(element: ScNamedElement)
     }
     else if (myInsertedName != null && !UndoManager.getInstance(myProject).isUndoInProgress
       && !IntroduceTypeAliasData.find.exists(_.modalDialogInProgress)) {
-      val revertInfo = myEditor.getUserData(ScalaIntroduceVariableHandler.REVERT_INFO)
-      if (revertInfo != null) {
-        extensions.inWriteAction {
-          val myFile: PsiFile = PsiDocumentManager.getInstance(myEditor.getProject).getPsiFile(myEditor.getDocument)
-          myEditor.getDocument.replaceString(0, myFile.getTextLength, revertInfo.fileText)
-        }
-        myEditor.getCaretModel.moveToOffset(revertInfo.caretOffset)
-        myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
+      RevertInfo.find(myEditor).foreach {
+        case RevertInfo(fileText, caretOffset) =>
+          inWriteAction {
+            val myFile: PsiFile = PsiDocumentManager.getInstance(myEditor.getProject).getPsiFile(myEditor.getDocument)
+            myEditor.getDocument.replaceString(0, myFile.getTextLength, fileText)
+          }
+          myEditor.getCaretModel.moveToOffset(caretOffset)
+          myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
       }
     }
   }

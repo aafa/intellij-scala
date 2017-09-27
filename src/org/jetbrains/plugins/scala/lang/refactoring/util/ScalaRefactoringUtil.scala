@@ -16,7 +16,7 @@ import com.intellij.openapi.editor.markup.{HighlighterLayer, HighlighterTargetAr
 import com.intellij.openapi.editor.{Editor, RangeMarker, SelectionModel, VisualPosition}
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.{JBPopupAdapter, JBPopupFactory, LightweightWindowEvent}
-import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.util.{Key, TextRange}
 import com.intellij.openapi.vfs.ReadonlyStatusHandler
 import com.intellij.psi._
 import com.intellij.psi.search.searches.ReferencesSearch
@@ -1174,7 +1174,20 @@ object ScalaRefactoringUtil {
     }
   }
 
-  private[refactoring] case class RevertInfo(fileText: String, caretOffset: Int)
+  private[refactoring] case class RevertInfo private(fileText: String, caretOffset: Int)
+
+  private[refactoring] object RevertInfo {
+
+    private[this] val Key: Key[RevertInfo] = new Key("RevertInfo")
+
+    def find(implicit editor: Editor): Option[RevertInfo] =
+      Option(editor.getUserData(Key))
+
+    def put(fileText: String)
+           (implicit editor: Editor): Unit = {
+      editor.putUserData(Key, RevertInfo(fileText, editor.getCaretModel.getOffset))
+    }
+  }
 
   private[refactoring] class IntroduceException extends Exception
 

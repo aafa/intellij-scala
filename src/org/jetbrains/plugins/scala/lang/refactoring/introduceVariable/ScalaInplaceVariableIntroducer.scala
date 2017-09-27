@@ -26,6 +26,7 @@ import com.intellij.psi.search.{LocalSearchScope, SearchScope}
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.introduce.inplace.InplaceVariableIntroducer
 import com.intellij.ui.NonFocusableCheckBox
+import org.jetbrains.plugins.scala.extensions.inWriteAction
 import org.jetbrains.plugins.scala.lang.lexer.ScalaTokenTypes
 import org.jetbrains.plugins.scala.lang.psi.api.base.patterns.ScTypedPattern
 import org.jetbrains.plugins.scala.lang.psi.api.expr.{ScEnumerator, ScExpression}
@@ -34,7 +35,8 @@ import org.jetbrains.plugins.scala.lang.psi.api.toplevel.ScNamedElement
 import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory._
 import org.jetbrains.plugins.scala.lang.psi.types.ScType
 import org.jetbrains.plugins.scala.lang.psi.{ScalaPsiElement, ScalaPsiUtil}
-import org.jetbrains.plugins.scala.lang.refactoring.util.{BalloonConflictsReporter, ScalaNamesUtil, ScalaVariableValidator, ValidationReporter}
+import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.RevertInfo
+import org.jetbrains.plugins.scala.lang.refactoring.util._
 import org.jetbrains.plugins.scala.project.ProjectContext
 import org.jetbrains.plugins.scala.settings.ScalaApplicationSettings
 import org.jetbrains.plugins.scala.settings.annotations._
@@ -335,13 +337,13 @@ class ScalaInplaceVariableIntroducer(expr: ScExpression,
           myEditor.getCaretModel.moveToOffset(declaration.getTextRange.getEndOffset)
         }
       } else if (getDeclaration != null && !UndoManager.getInstance(myProject).isUndoInProgress) {
-        val revertInfo = myEditor.getUserData(ScalaIntroduceVariableHandler.REVERT_INFO)
-        if (revertInfo != null) {
-          extensions.inWriteAction {
-            myEditor.getDocument.replaceString(0, myFile.getTextLength, revertInfo.fileText)
-          }
-          myEditor.getCaretModel.moveToOffset(revertInfo.caretOffset)
-          myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
+        RevertInfo.find(myEditor).foreach {
+          case RevertInfo(fileText, caretOffset) =>
+            inWriteAction {
+              myEditor.getDocument.replaceString(0, myFile.getTextLength, fileText)
+            }
+            myEditor.getCaretModel.moveToOffset(caretOffset)
+            myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
         }
       }
     }

@@ -254,8 +254,7 @@ object IntroduceExpressions {
       oneLineSelected && !insideExpression
     }
 
-    val revertInfo = RevertInfo(file.getText, editor.getCaretModel.getOffset)
-    editor.putUserData(ScalaIntroduceVariableHandler.REVERT_INFO, revertInfo)
+    RevertInfo.put(file.getText)
 
     val fastDefinition = occurrences.length == 1 && isOneLiner
 

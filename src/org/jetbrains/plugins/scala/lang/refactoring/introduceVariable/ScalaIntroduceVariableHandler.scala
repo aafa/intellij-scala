@@ -7,7 +7,6 @@ import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.command.impl.StartMarkAction
 import com.intellij.openapi.editor.{Editor, SelectionModel}
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util._
 import com.intellij.psi._
 import com.intellij.psi.util.PsiTreeUtil.findElementOfClassAtOffset
 import com.intellij.refactoring.HelpID
@@ -79,8 +78,4 @@ class ScalaIntroduceVariableHandler extends ScalaRefactoringActionHandler with D
         }
     }
   }
-}
-
-object ScalaIntroduceVariableHandler {
-  val REVERT_INFO: Key[RevertInfo] = new Key("RevertInfo")
 }

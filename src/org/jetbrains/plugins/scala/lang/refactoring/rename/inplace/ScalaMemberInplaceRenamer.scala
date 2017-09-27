@@ -5,17 +5,17 @@ import java.util
 
 import com.intellij.codeInsight.TargetElementUtil
 import com.intellij.lang.{Language, LanguageNamesValidation}
-import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.editor.{Editor, ScrollType}
-import com.intellij.openapi.util.Key
 import com.intellij.psi._
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.rename.RenamePsiElementProcessor
 import com.intellij.refactoring.rename.inplace.{MemberInplaceRenamer, VariableInplaceRenamer}
 import com.intellij.refactoring.{RefactoringActionHandler, RefactoringBundle}
+import org.jetbrains.plugins.scala.extensions.{inWriteAction, startCommand}
 import org.jetbrains.plugins.scala.lang.refactoring.rename.ScalaRenameUtil
-import org.jetbrains.plugins.scala.lang.refactoring.util.{ScalaNamesUtil, ScalaRefactoringUtil}
+import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaNamesUtil
+import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.RevertInfo
 
 /**
  * Nikolay.Tropin
@@ -60,13 +60,13 @@ class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
   override def beforeTemplateStart() {
     super.beforeTemplateStart()
 
-    val revertInfo = ScalaRefactoringUtil.RevertInfo(editor.getDocument.getText, editor.getCaretModel.getOffset)
-    editor.putUserData(ScalaMemberInplaceRenamer.REVERT_INFO, revertInfo)
+    val document = myEditor.getDocument
+    RevertInfo.put(document.getText)(myEditor)
 
-    val file = PsiDocumentManager.getInstance(myProject).getPsiFile(myEditor.getDocument)
-    val offset = TargetElementUtil.adjustOffset(file, editor.getDocument, editor.getCaretModel.getOffset)
+    val file = PsiDocumentManager.getInstance(myProject).getPsiFile(document)
+    val offset = TargetElementUtil.adjustOffset(file, document, myEditor.getCaretModel.getOffset)
     val range = file.findElementAt(offset).getTextRange
-    myCaretRangeMarker = myEditor.getDocument.createRangeMarker(range)
+    myCaretRangeMarker = document.createRangeMarker(range)
     myCaretRangeMarker.setGreedyToLeft(true)
     myCaretRangeMarker.setGreedyToRight(true)
   }
@@ -74,17 +74,16 @@ class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
   override def revertState() {
     if (myOldName == null) return
 
-    CommandProcessor.getInstance.executeCommand(myProject, new Runnable {
-      def run() {
-        val revertInfo = editor.getUserData(ScalaMemberInplaceRenamer.REVERT_INFO)
-        val document = myEditor.getDocument
-        if (revertInfo != null) {
-          extensions.inWriteAction {
-            document.replaceString(0, document.getTextLength, revertInfo.fileText)
+    startCommand(myProject, () => {
+      val document = myEditor.getDocument
+      RevertInfo.find(myEditor).foreach {
+        case RevertInfo(fileText, caretOffset) =>
+          inWriteAction {
+            document.replaceString(0, document.getTextLength, fileText)
             PsiDocumentManager.getInstance(myProject).commitDocument(document)
           }
-          val offset = revertInfo.caretOffset
-          myEditor.getCaretModel.moveToOffset(offset)
+
+          myEditor.getCaretModel.moveToOffset(caretOffset)
           myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
           PsiDocumentManager.getInstance(myEditor.getProject).commitDocument(document)
           val clazz = myElementToRename.getClass
@@ -99,12 +98,11 @@ class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
                 case _ => null
               }
           }
-        }
-        if (!myProject.isDisposed && myProject.isOpen) {
-          PsiDocumentManager.getInstance(myProject).commitDocument(document)
-        }
       }
-    }, getCommandName, null)
+      if (!myProject.isDisposed && myProject.isOpen) {
+        PsiDocumentManager.getInstance(myProject).commitDocument(document)
+      }
+    }, getCommandName)
 
   }
 
@@ -143,8 +141,8 @@ class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
       case t: Throwable =>
         val element = getVariable
         val subst = getSubstituted
-        val offset = editor.getCaretModel.getOffset
-        val text = editor.getDocument.getText
+        val offset = myEditor.getCaretModel.getOffset
+        val text = myEditor.getDocument.getText
         val aroundCaret = text.substring(offset - 50, offset) + "<caret>" + text.substring(offset, offset + 50)
         val message =
           s"""Could not perform inplace rename:
@@ -164,13 +162,10 @@ class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
   override def startsOnTheSameElement(handler: RefactoringActionHandler, element: PsiElement): Boolean = {
     handler match {
       case _: ScalaMemberInplaceRenameHandler =>
-        val caretOffset = editor.getCaretModel.getOffset
+        val caretOffset = myEditor.getCaretModel.getOffset
         myCaretRangeMarker != null && myCaretRangeMarker.isValid &&
           myCaretRangeMarker.getStartOffset <= caretOffset && myCaretRangeMarker.getEndOffset >= caretOffset
       case _ => false
     }
   }
-}
-object ScalaMemberInplaceRenamer {
-  val REVERT_INFO: Key[ScalaRefactoringUtil.RevertInfo] = new Key("RevertInfo")
 }
