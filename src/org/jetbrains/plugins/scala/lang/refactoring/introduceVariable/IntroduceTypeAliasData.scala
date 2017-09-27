@@ -1,61 +1,56 @@
-package org.jetbrains.plugins.scala.lang.refactoring.introduceVariable
+package org.jetbrains.plugins.scala
+package lang
+package refactoring
+package introduceVariable
 
 import com.intellij.openapi.util.TextRange
-import com.intellij.psi.PsiFile
-import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.util.PsiTreeUtil.findElementOfClassAtOffset
 import org.jetbrains.plugins.scala.lang.psi.api.statements.ScTypeAlias
 
-/**
- * Created by Kate Ustyuzhanina
- * on 9/7/15
- */
 class IntroduceTypeAliasData {
-  var currentScope: ScopeItem = null
-  var initialTypeElement: TextRange = null
-  var possibleScopes: Array[ScopeItem] = null
-  var typeAliasInfo: (PsiFile, TextRange) = null
-  var isCallModalDialogInProgress: Boolean = false
 
-  def setTypeAlias(inTypeAlias: ScTypeAlias): Unit = {
-    if (inTypeAlias != null) {
-      typeAliasInfo = (inTypeAlias.getContainingFile, inTypeAlias.getTextRange)
+  private[this] var typeAlias_ : ScTypeAlias = null
+  private[this] var currentScope_ : ScopeItem = null
+  private[this] var initialRange_ : TextRange = null
+  private[this] var possibleScopes_ : Array[ScopeItem] = null
+  private[this] var modalDialogInProgress_ : Boolean = false
+
+  def typeAlias: ScTypeAlias =
+    findElementOfClassAtOffset(typeAlias_.getContainingFile, typeAlias_.getTextRange.getStartOffset, classOf[ScTypeAlias], false)
+
+  def typeAlias_=(typeAlias: ScTypeAlias): Unit = {
+    typeAlias_ = typeAlias
+  }
+
+  def currentScope: ScopeItem = currentScope_
+
+  def currentScope_=(currentScope: ScopeItem): Unit = {
+    currentScope_ = currentScope
+  }
+
+  def initialRange: TextRange = initialRange_
+
+  def initialRange_=(initialRange: TextRange): Unit = {
+    if (initialRange_ == null) {
+      initialRange_ = initialRange
     }
   }
 
-  def clearData(): Unit = {
-    currentScope = null
-    initialTypeElement = null
-    possibleScopes = null
-    typeAliasInfo = null
-    isCallModalDialogInProgress = false
+  def possibleScopes: Array[ScopeItem] = possibleScopes_
+
+  def possibleScopes_=(possibleScopes: Array[ScopeItem]): Unit = {
+    possibleScopes_ = possibleScopes
   }
 
-  def isData: Boolean = {
-    currentScope != null || initialTypeElement != null || possibleScopes != null || typeAliasInfo != null
+  def modalDialogInProgress: Boolean = modalDialogInProgress_
+
+  def modalDialogInProgress_=(modalDialogInProgress: Boolean): Unit = {
+    modalDialogInProgress_ = modalDialogInProgress
   }
 
-  def addScopeElement(item: ScopeItem): Unit = {
-    currentScope = item
-  }
-
-  def setInintialInfo(textRange: TextRange): Unit = {
-    if (initialTypeElement == null) {
-      initialTypeElement = textRange
-    }
-  }
-
-  def setPossibleScopes(inPossibleScopes: Array[ScopeItem]): Unit = {
-    possibleScopes = inPossibleScopes
-  }
-
-  def getNamedElement: ScTypeAlias = {
-    val element = PsiTreeUtil.findElementOfClassAtOffset(typeAliasInfo._1,
-      typeAliasInfo._2.getStartOffset, classOf[ScTypeAlias], false)
-
-    element match {
-      case typeAlias: ScTypeAlias =>
-        typeAlias
-      case _ => null
-    }
-  }
+  def isEmpty: Boolean =
+    typeAlias_ == null &&
+      currentScope_ == null &&
+      initialRange_ == null &&
+      possibleScopes_ == null
 }

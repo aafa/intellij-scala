@@ -68,7 +68,7 @@ class ScalaIntroduceVariableHandler extends ScalaRefactoringActionHandler with D
     }
 
     maybeTypeElement match {
-      case Some(typeElement) if editor.getUserData(REVERT_TYPE_ALIAS_INFO).isData =>
+      case Some(typeElement) if !editor.getUserData(REVERT_TYPE_ALIAS_INFO).isEmpty =>
         introduceTypeAlias.invokeTypeElement(file, typeElement)
       case Some(typeElement) =>
         afterTypeElementChoosing(typeElement, introduceTypeAlias.refactoringName) {

@@ -48,17 +48,12 @@ class ScalaInplaceTypeAliasIntroducer(element: ScNamedElement)
     myAdvertisementText = "Press ctrl + alt + v" + " to show dialog with more options"
   }
 
-  override def startsOnTheSameElement(handler: RefactoringActionHandler, element: PsiElement): Boolean = {
-    def checkEquals(typeAliasDefinition: ScTypeAliasDefinition) = {
-      editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).getNamedElement == element
-    }
-
-    element match {
-      case typeAliasDefinition: ScTypeAliasDefinition =>
-        checkEquals(typeAliasDefinition) && handler.isInstanceOf[ScalaIntroduceVariableHandler]
+  override def startsOnTheSameElement(handler: RefactoringActionHandler, element: PsiElement): Boolean =
+    handler.isInstanceOf[ScalaIntroduceVariableHandler] && (element match {
+      case typeAlias: ScTypeAliasDefinition => Option(editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO))
+        .map(_.typeAlias).contains(typeAlias)
       case _ => false
-    }
-  }
+    })
 
   override def revertState(): Unit = {
     //do nothing. we don't need to revert state
@@ -69,7 +64,7 @@ class ScalaInplaceTypeAliasIntroducer(element: ScNamedElement)
       // don't know about element to refactor place
     }
     else if (myInsertedName != null && !UndoManager.getInstance(myProject).isUndoInProgress
-      && !editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).isCallModalDialogInProgress) {
+      && !editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).modalDialogInProgress) {
 
       val revertInfo = myEditor.getUserData(ScalaIntroduceVariableHandler.REVERT_INFO)
       if (revertInfo != null) {

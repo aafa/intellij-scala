@@ -7,7 +7,7 @@ import java.awt.Component
 import java.util
 import javax.swing.event.{ListSelectionEvent, ListSelectionListener}
 
-import com.intellij.codeInsight.template.impl.{TemplateManagerImpl, TemplateState}
+import com.intellij.codeInsight.template.impl.TemplateManagerImpl
 import com.intellij.codeInsight.unwrap.ScopeHighlighter
 import com.intellij.openapi.command.impl.StartMarkAction
 import com.intellij.openapi.editor.colors.{EditorColors, EditorColorsScheme}
@@ -50,99 +50,98 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
       val currentDataObject = editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO)
 
       if (currentDataObject.possibleScopes == null) {
-        currentDataObject.setPossibleScopes(ScopeSuggester.suggestScopes(conflictsReporter, project, editor, file, inTypeElement))
-      }
-
-      if (currentDataObject.possibleScopes.isEmpty) {
-        showErrorHintWithException(ScalaBundle.message("cannot.refactor.scope.not.found"), refactoringName)
-      }
-
-      def runWithDialog(fromInplace: Boolean, mainScope: ScopeItem, enteredName: String = ""): Unit = {
-        val possibleScopes = currentDataObject.possibleScopes
-
-        val (updatedMainScope, updatedTypeElement) = mainScope match {
-          case simpleScope: SimpleScopeItem if fromInplace =>
-            val newScope = simpleScope.revalidate(enteredName)
-            possibleScopes(possibleScopes.indexOf(mainScope)) = newScope
-
-            val range = currentDataObject.initialTypeElement
-            val newTypeElement = findElementOfClassAtRange(file, range.getStartOffset, range.getEndOffset, classOf[ScTypeElement]) match {
-              case simpleType: ScSimpleTypeElement if isInvalid(simpleType) => getParentOfType(simpleType, classOf[ScParameterizedTypeElement])
-              case typeElement => typeElement
-            }
-
-            (newScope, newTypeElement)
-          case _: SimpleScopeItem | _: PackageScopeItem => (mainScope, inTypeElement)
-          case _ => (possibleScopes(0), inTypeElement)
-        }
-
-        this.runWithDialog(updatedTypeElement, possibleScopes, file, updatedMainScope)
-      }
-
-      // replace all occurrences, don't replace occurences available from companion object or inheritors
-      // suggest to choose scope
-      def runInplace(): Unit = {
-        def handleScope(scopeItem: SimpleScopeItem): Unit =
-          runRefactoring {
-            val suggestedNames = scopeItem.availableNames
-
-            val (namedElementReference, typeElementReference) = inWriteAction {
-              val allOccurrences = OccurrenceData(scopeItem)
-              runRefactoringForTypeInside(file, inTypeElement, suggestedNames.iterator().next(), allOccurrences, scopeItem)
-            }
-
-            val maybeTypeAlias = Option(namedElementReference.getElement).collect {
-              case typeAlias: ScTypeAliasDefinition => typeAlias
-            }
-
-            val maybeTypeElement = Option(typeElementReference.getElement)
-
-            IntroduceElement.withElement(maybeTypeElement) { _ =>
-              maybeTypeAlias.foreach { typeAlias =>
-                editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).addScopeElement(scopeItem)
-
-                new ScalaInplaceTypeAliasIntroducer(typeAlias)
-                  .performInplaceRefactoring(new util.LinkedHashSet[String](suggestedNames))
-              }
-            }
-          }
-
-        val currentScope = currentDataObject.currentScope
-
-        //need open modal dialog in inplace mode
-        if ((StartMarkAction.canStart(project) != null) && (currentScope != null)) {
-          currentDataObject.isCallModalDialogInProgress = true
-          val templateState: TemplateState = TemplateManagerImpl.getTemplateState(InjectedLanguageUtil.getTopLevelEditor(editor))
-
-          if (templateState != null) {
-            templateState.gotoEnd()
-          }
-
-          val enteredName = currentDataObject.getNamedElement.getName
-          ScalaInplaceTypeAliasIntroducer.revertState(editor, currentDataObject.currentScope, currentDataObject.getNamedElement)
-
-          runWithDialog(fromInplace = true, currentDataObject.currentScope, enteredName)
-          //          editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).clearData()
-        } else {
-          currentDataObject.setInintialInfo(inTypeElement.getTextRange)
-
-          IntroduceTypeAlias.showTypeAliasChooser(currentDataObject.possibleScopes, ScalaBundle.message("choose.scope.for", refactoringName)) {
-            case simpleScope: SimpleScopeItem if simpleScope.usualOccurrences.nonEmpty =>
-              handleScope(simpleScope)
-            case packageScope: PackageScopeItem =>
-              runWithDialog(fromInplace = true, packageScope)
-          }
+        ScopeSuggester.suggestScopes(conflictsReporter, project, editor, file, inTypeElement) match {
+          case Array() => showErrorHintWithException(ScalaBundle.message("cannot.refactor.scope.not.found"), refactoringName)
+          case scopes => currentDataObject.possibleScopes = scopes
         }
       }
 
-      if (isInplaceAvailable(editor)) runInplace()
-      else runWithDialog(fromInplace = false, null)
+      if (isInplaceAvailable(editor)) runInplace(inTypeElement, file, currentDataObject)
+      else runWithDialog(inTypeElement, currentDataObject.possibleScopes, file, currentDataObject.possibleScopes.head)
     }
 
     catch {
       case _: IntroduceException =>
     }
   }
+
+  // replace all occurrences, don't replace occurences available from companion object or inheritors
+  // suggest to choose scope
+  private def runInplace(inTypeElement: ScTypeElement,
+                         file: PsiFile,
+                         currentDataObject: IntroduceTypeAliasData)
+                        (implicit project: Project, editor: Editor): Unit = {
+    val possibleScopes = currentDataObject.possibleScopes
+
+    def localRunWithDialog(): Unit = {
+      val (updatedMainScope, updatedTypeElement) = currentDataObject.currentScope match {
+        case simpleScope: SimpleScopeItem =>
+          val enteredName = currentDataObject.typeAlias.getName
+          val newScope = simpleScope.revalidate(enteredName)
+          possibleScopes(possibleScopes.indexOf(simpleScope)) = newScope
+
+          val range = currentDataObject.initialRange
+          val newTypeElement = findElementOfClassAtRange(file, range.getStartOffset, range.getEndOffset, classOf[ScTypeElement]) match {
+            case simpleType: ScSimpleTypeElement if isInvalid(simpleType) => getParentOfType(simpleType, classOf[ScParameterizedTypeElement])
+            case typeElement => typeElement
+          }
+
+          (newScope, newTypeElement)
+        case packageScope: PackageScopeItem => (packageScope, inTypeElement)
+        case _ => (possibleScopes.head, inTypeElement)
+      }
+
+      runWithDialog(updatedTypeElement, possibleScopes, file, updatedMainScope)
+    }
+
+
+    def handleScope(scopeItem: SimpleScopeItem): Unit = runRefactoring {
+      val suggestedNames = scopeItem.availableNames
+
+      val (namedElementReference, typeElementReference) = inWriteAction {
+        val allOccurrences = OccurrenceData(scopeItem)
+        runRefactoringForTypeInside(file, inTypeElement, suggestedNames.iterator().next(), allOccurrences, scopeItem)
+      }
+
+      val maybeTypeAlias = Option(namedElementReference.getElement).collect {
+        case typeAlias: ScTypeAliasDefinition => typeAlias
+      }
+
+      val maybeTypeElement = Option(typeElementReference.getElement)
+
+      IntroduceElement.withElement(maybeTypeElement) { _ =>
+        maybeTypeAlias.foreach { typeAlias =>
+          editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).currentScope = scopeItem
+
+          new ScalaInplaceTypeAliasIntroducer(typeAlias)
+            .performInplaceRefactoring(new util.LinkedHashSet[String](suggestedNames))
+        }
+      }
+    }
+
+    val currentScope = currentDataObject.currentScope
+
+    //need open modal dialog in inplace mode
+    if ((StartMarkAction.canStart(project) != null) && (currentScope != null)) {
+      currentDataObject.modalDialogInProgress = true
+      Option(TemplateManagerImpl.getTemplateState(InjectedLanguageUtil.getTopLevelEditor(editor)))
+        .foreach(_.gotoEnd())
+
+      ScalaInplaceTypeAliasIntroducer.revertState(editor, currentDataObject.currentScope, currentDataObject.typeAlias)
+
+      localRunWithDialog()
+    } else {
+      currentDataObject.initialRange = inTypeElement.getTextRange
+
+      IntroduceTypeAlias.showTypeAliasChooser(possibleScopes, ScalaBundle.message("choose.scope.for", refactoringName)) {
+        case simpleScope: SimpleScopeItem if simpleScope.usualOccurrences.nonEmpty =>
+          handleScope(simpleScope)
+        case packageScope: PackageScopeItem =>
+          runWithDialog(inTypeElement, possibleScopes, file, packageScope)
+      }
+    }
+  }
+
 
   private def runRefactoringForTypeInside(file: PsiFile,
                                           typeElement: ScTypeElement,
@@ -179,7 +178,7 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
 
     val typeAlias = addTypeAliasDefinition(occurrences.allOccurrences.head, parent)
     Option(editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO))
-      .foreach(_.setTypeAlias(typeAlias))
+      .foreach(_.typeAlias = typeAlias)
 
     def replaceWith(typeElement: ScTypeElement, name: String = typeName): ScTypeElement = {
       //remove parenthesis around typeElement
