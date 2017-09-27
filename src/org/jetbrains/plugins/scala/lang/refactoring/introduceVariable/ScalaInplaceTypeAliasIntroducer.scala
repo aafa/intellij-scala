@@ -50,7 +50,7 @@ class ScalaInplaceTypeAliasIntroducer(element: ScNamedElement)
 
   override def startsOnTheSameElement(handler: RefactoringActionHandler, element: PsiElement): Boolean =
     handler.isInstanceOf[ScalaIntroduceVariableHandler] && (element match {
-      case typeAlias: ScTypeAliasDefinition => Option(editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO))
+      case typeAlias: ScTypeAliasDefinition => IntroduceTypeAliasData.find(editor)
         .map(_.typeAlias).contains(typeAlias)
       case _ => false
     })
@@ -64,8 +64,7 @@ class ScalaInplaceTypeAliasIntroducer(element: ScNamedElement)
       // don't know about element to refactor place
     }
     else if (myInsertedName != null && !UndoManager.getInstance(myProject).isUndoInProgress
-      && !editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).modalDialogInProgress) {
-
+      && !IntroduceTypeAliasData.find.exists(_.modalDialogInProgress)) {
       val revertInfo = myEditor.getUserData(ScalaIntroduceVariableHandler.REVERT_INFO)
       if (revertInfo != null) {
         extensions.inWriteAction {

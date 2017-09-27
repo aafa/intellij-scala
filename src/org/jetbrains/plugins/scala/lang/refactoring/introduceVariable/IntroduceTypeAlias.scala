@@ -15,7 +15,7 @@ import com.intellij.openapi.editor.markup._
 import com.intellij.openapi.editor.{Editor, SelectionModel}
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.{JBPopupAdapter, JBPopupFactory, LightweightWindowEvent}
-import com.intellij.openapi.util.{Key, TextRange}
+import com.intellij.openapi.util.TextRange
 import com.intellij.psi._
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil
 import com.intellij.psi.util.PsiTreeUtil.{findElementOfClassAtRange, getChildOfType, getParentOfType}
@@ -47,7 +47,7 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
         showErrorHintWithException(ScalaBundle.message("cannot.refactor.not.valid.type"), refactoringName)
       }
 
-      val currentDataObject = editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO)
+      val currentDataObject = IntroduceTypeAliasData.find.get
 
       if (currentDataObject.possibleScopes == null) {
         ScopeSuggester.suggestScopes(conflictsReporter, project, editor, file, inTypeElement) match {
@@ -111,7 +111,7 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
 
       IntroduceElement.withElement(maybeTypeElement) { _ =>
         maybeTypeAlias.foreach { typeAlias =>
-          editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO).currentScope = scopeItem
+          IntroduceTypeAliasData.find.foreach(_.currentScope = scopeItem)
 
           new ScalaInplaceTypeAliasIntroducer(typeAlias)
             .performInplaceRefactoring(new util.LinkedHashSet[String](suggestedNames))
@@ -177,8 +177,7 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
     }
 
     val typeAlias = addTypeAliasDefinition(occurrences.allOccurrences.head, parent)
-    Option(editor.getUserData(IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO))
-      .foreach(_.typeAlias = typeAlias)
+    IntroduceTypeAliasData.find.foreach(_.typeAlias = typeAlias)
 
     def replaceWith(typeElement: ScTypeElement, name: String = typeName): ScTypeElement = {
       //remove parenthesis around typeElement
@@ -287,7 +286,6 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
 }
 
 object IntroduceTypeAlias {
-  val REVERT_TYPE_ALIAS_INFO: Key[IntroduceTypeAliasData] = new Key("RevertTypeAliasInfo")
 
   private def showTypeAliasChooser(elements: Array[ScopeItem], title: String)
                                   (pass: ScopeItem => Unit)

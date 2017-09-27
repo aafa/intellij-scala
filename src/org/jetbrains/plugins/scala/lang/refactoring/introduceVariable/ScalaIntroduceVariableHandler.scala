@@ -12,7 +12,6 @@ import com.intellij.psi._
 import com.intellij.psi.util.PsiTreeUtil.findElementOfClassAtOffset
 import com.intellij.refactoring.HelpID
 import org.jetbrains.plugins.scala.lang.psi.api.base.types._
-import org.jetbrains.plugins.scala.lang.refactoring.introduceVariable.IntroduceTypeAlias.REVERT_TYPE_ALIAS_INFO
 import org.jetbrains.plugins.scala.lang.refactoring.util.DialogConflictsReporter
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil._
 
@@ -58,7 +57,7 @@ class ScalaIntroduceVariableHandler extends ScalaRefactoringActionHandler with D
 
     //clear data on startRefactoring, if there is no marks, but there is some data
     if (StartMarkAction.canStart(project) == null) {
-      editor.putUserData(REVERT_TYPE_ALIAS_INFO, new IntroduceTypeAliasData())
+      IntroduceTypeAliasData.put
     }
 
     val maybeTypeElement = maybeSelectedElement match {
@@ -68,7 +67,7 @@ class ScalaIntroduceVariableHandler extends ScalaRefactoringActionHandler with D
     }
 
     maybeTypeElement match {
-      case Some(typeElement) if !editor.getUserData(REVERT_TYPE_ALIAS_INFO).isEmpty =>
+      case Some(typeElement) if !IntroduceTypeAliasData.find.exists(_.isEmpty) =>
         introduceTypeAlias.invokeTypeElement(file, typeElement)
       case Some(typeElement) =>
         afterTypeElementChoosing(typeElement, introduceTypeAlias.refactoringName) {

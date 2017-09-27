@@ -3,11 +3,12 @@ package lang
 package refactoring
 package introduceVariable
 
-import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.util.{Key, TextRange}
 import com.intellij.psi.util.PsiTreeUtil.findElementOfClassAtOffset
 import org.jetbrains.plugins.scala.lang.psi.api.statements.ScTypeAlias
 
-class IntroduceTypeAliasData {
+class IntroduceTypeAliasData private() {
 
   private[this] var typeAlias_ : ScTypeAlias = null
   private[this] var currentScope_ : ScopeItem = null
@@ -53,4 +54,16 @@ class IntroduceTypeAliasData {
       currentScope_ == null &&
       initialRange_ == null &&
       possibleScopes_ == null
+}
+
+object IntroduceTypeAliasData {
+
+  private[this] val Key: Key[IntroduceTypeAliasData] = new Key("RevertTypeAliasInfo")
+
+  def find(implicit editor: Editor): Option[IntroduceTypeAliasData] =
+    Option(editor.getUserData(Key))
+
+  def put(implicit editor: Editor): Unit = {
+    editor.putUserData(Key, new IntroduceTypeAliasData())
+  }
 }
