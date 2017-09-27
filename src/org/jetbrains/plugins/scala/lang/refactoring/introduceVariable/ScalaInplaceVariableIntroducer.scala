@@ -13,10 +13,10 @@ import com.intellij.openapi.application.{ApplicationManager, Result}
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.command.impl.StartMarkAction
 import com.intellij.openapi.command.undo.UndoManager
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.event.{DocumentEvent, DocumentListener}
 import com.intellij.openapi.editor.ex.DocumentEx
 import com.intellij.openapi.editor.markup.RangeHighlighter
-import com.intellij.openapi.editor.{Editor, ScrollType}
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.VerticalFlowLayout
 import com.intellij.openapi.util.TextRange
@@ -26,7 +26,6 @@ import com.intellij.psi.search.{LocalSearchScope, SearchScope}
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.introduce.inplace.InplaceVariableIntroducer
 import com.intellij.ui.NonFocusableCheckBox
-import org.jetbrains.plugins.scala.extensions.inWriteAction
 import org.jetbrains.plugins.scala.lang.lexer.ScalaTokenTypes
 import org.jetbrains.plugins.scala.lang.psi.api.base.patterns.ScTypedPattern
 import org.jetbrains.plugins.scala.lang.psi.api.expr.{ScEnumerator, ScExpression}
@@ -337,14 +336,7 @@ class ScalaInplaceVariableIntroducer(expr: ScExpression,
           myEditor.getCaretModel.moveToOffset(declaration.getTextRange.getEndOffset)
         }
       } else if (getDeclaration != null && !UndoManager.getInstance(myProject).isUndoInProgress) {
-        RevertInfo.find(myEditor).foreach {
-          case RevertInfo(fileText, caretOffset) =>
-            inWriteAction {
-              myEditor.getDocument.replaceString(0, myFile.getTextLength, fileText)
-            }
-            myEditor.getCaretModel.moveToOffset(caretOffset)
-            myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
-        }
+        RevertInfo.revert(myFile.getTextLength, commitDocuments = false)(myEditor)
       }
     }
     finally {

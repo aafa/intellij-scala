@@ -11,9 +11,9 @@ import com.intellij.codeInsight.PsiEquivalenceUtil
 import com.intellij.codeInsight.highlighting.HighlightManager
 import com.intellij.codeInsight.unwrap.ScopeHighlighter
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.editor._
 import com.intellij.openapi.editor.colors.{EditorColors, EditorColorsManager}
 import com.intellij.openapi.editor.markup.{HighlighterLayer, HighlighterTargetArea, RangeHighlighter, TextAttributes}
-import com.intellij.openapi.editor.{Editor, RangeMarker, SelectionModel, VisualPosition}
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.{JBPopupAdapter, JBPopupFactory, LightweightWindowEvent}
 import com.intellij.openapi.util.{Key, TextRange}
@@ -1174,18 +1174,60 @@ object ScalaRefactoringUtil {
     }
   }
 
-  private[refactoring] case class RevertInfo private(fileText: String, caretOffset: Int)
-
   private[refactoring] object RevertInfo {
 
-    private[this] val Key: Key[RevertInfo] = new Key("RevertInfo")
+    private[this] val Key: Key[(String, Int)] = new Key("RevertInfo")
 
-    def find(implicit editor: Editor): Option[RevertInfo] =
+    def find(implicit editor: Editor): Option[(String, Int)] =
       Option(editor.getUserData(Key))
 
     def put(fileText: String)
            (implicit editor: Editor): Unit = {
-      editor.putUserData(Key, RevertInfo(fileText, editor.getCaretModel.getOffset))
+      editor.putUserData(Key, (fileText, editor.getCaretModel.getOffset))
+    }
+
+    def revert(commitDocuments: Boolean = false)
+              (implicit editor: Editor): Unit = {
+      revert(editor.getDocument.getTextLength, commitDocuments)
+    }
+
+    def revertStateCommand(commandName: String = "Introduce Type Alias")
+                          (action: => Unit)
+                          (implicit project: Project, editor: Editor): Unit =
+      startCommand(project, () => {
+        revert(commitDocuments = true)
+        if (!project.isDisposed && project.isOpen) {
+          PsiDocumentManager.getInstance(project).commitDocument(editor.getDocument)
+        }
+
+        find.foreach { _ =>
+          action
+        }
+      }, commandName)
+
+    def revert(length: Int, commitDocuments: Boolean)
+              (implicit editor: Editor): Unit = {
+      val project = editor.getProject
+      val manager = PsiDocumentManager.getInstance(project)
+
+      def commitDocument(document: Document = editor.getDocument): Unit =
+        if (commitDocuments) {
+          manager.commitDocument(document)
+        }
+
+      find.foreach {
+        case (fileText, caretOffset) =>
+          val document = editor.getDocument
+
+          inWriteAction {
+            document.replaceString(0, length, fileText)
+            commitDocument()
+          }
+
+          editor.getCaretModel.moveToOffset(caretOffset)
+          editor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
+          commitDocument()
+      }
     }
   }
 

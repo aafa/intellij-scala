@@ -5,16 +5,16 @@ import java.util
 
 import com.intellij.codeInsight.TargetElementUtil
 import com.intellij.lang.{Language, LanguageNamesValidation}
-import com.intellij.openapi.editor.{Editor, ScrollType}
+import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.Project
 import com.intellij.psi._
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.rename.RenamePsiElementProcessor
 import com.intellij.refactoring.rename.inplace.{MemberInplaceRenamer, VariableInplaceRenamer}
 import com.intellij.refactoring.{RefactoringActionHandler, RefactoringBundle}
-import org.jetbrains.plugins.scala.extensions.{inWriteAction, startCommand}
 import org.jetbrains.plugins.scala.lang.refactoring.rename.ScalaRenameUtil
-import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaNamesUtil
+import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaNamesUtil.scalaName
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.RevertInfo
 
 /**
@@ -22,24 +22,11 @@ import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.Re
  * 6/20/13
  */
 class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
-                                substituted: PsiElement,
-                                editor: Editor,
-                                initialName: String,
-                                oldName: String)
+                                substituted: PsiElement)
+                               (initialName: String = scalaName(substituted),
+                                oldName: String = scalaName(substituted))
+                               (private implicit val editor: Editor)
         extends MemberInplaceRenamer(elementToRename, substituted, editor, initialName, oldName) {
-
-  private def this(t: (PsiNamedElement, PsiElement, Editor, String, String)) = this(t._1, t._2, t._3, t._4, t._5)
-
-  def this(elementToRename: PsiNamedElement, substituted: PsiElement, editor: Editor) {
-    this {
-      val name = ScalaNamesUtil.scalaName(substituted)
-      (elementToRename, substituted, editor, name, name)
-    }
-  }
-
-  def this(elementToRename: PsiNamedElement, substituted: PsiNamedElement, editor: Editor, additionalToRename: Seq[PsiElement]) {
-    this(elementToRename, substituted, editor)
-  }
 
   protected override def getCommandName: String = {
     if (myInitialName != null) RefactoringBundle.message("renaming.command.name", myInitialName)
@@ -57,11 +44,13 @@ class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
 
   override def acceptReference(reference: PsiReference): Boolean = true
 
+  private implicit def project: Project = myProject
+
   override def beforeTemplateStart() {
     super.beforeTemplateStart()
 
     val document = myEditor.getDocument
-    RevertInfo.put(document.getText)(myEditor)
+    RevertInfo.put(document.getText)
 
     val file = PsiDocumentManager.getInstance(myProject).getPsiFile(document)
     val offset = TargetElementUtil.adjustOffset(file, document, myEditor.getCaretModel.getOffset)
@@ -74,41 +63,25 @@ class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
   override def revertState() {
     if (myOldName == null) return
 
-    startCommand(myProject, () => {
-      val document = myEditor.getDocument
-      RevertInfo.find(myEditor).foreach {
-        case RevertInfo(fileText, caretOffset) =>
-          inWriteAction {
-            document.replaceString(0, document.getTextLength, fileText)
-            PsiDocumentManager.getInstance(myProject).commitDocument(document)
-          }
-
-          myEditor.getCaretModel.moveToOffset(caretOffset)
-          myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
-          PsiDocumentManager.getInstance(myEditor.getProject).commitDocument(document)
-          val clazz = myElementToRename.getClass
-          val element = TargetElementUtil.findTargetElement(myEditor,
-            TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED | TargetElementUtil.ELEMENT_NAME_ACCEPTED)
-          myElementToRename = element match {
-            case null => null
+    RevertInfo.revertStateCommand(getCommandName) {
+      val clazz = myElementToRename.getClass
+      val element = TargetElementUtil.findTargetElement(myEditor,
+        TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED | TargetElementUtil.ELEMENT_NAME_ACCEPTED)
+      myElementToRename = element match {
+        case null => null
+        case named: PsiNamedElement if named.getClass == clazz => named
+        case _ =>
+          RenamePsiElementProcessor.forElement(element).substituteElementToRename(element, myEditor) match {
             case named: PsiNamedElement if named.getClass == clazz => named
-            case _ =>
-              RenamePsiElementProcessor.forElement(element).substituteElementToRename(element, myEditor) match {
-                case named: PsiNamedElement if named.getClass == clazz => named
-                case _ => null
-              }
+            case _ => null
           }
       }
-      if (!myProject.isDisposed && myProject.isOpen) {
-        PsiDocumentManager.getInstance(myProject).commitDocument(document)
-      }
-    }, getCommandName)
-
+    }
   }
 
   override def getVariable: PsiNamedElement = {
     Option(super.getVariable).getOrElse {
-      if (myElementToRename != null && myElementToRename.isValid && oldName == ScalaNamesUtil.scalaName(myElementToRename))
+      if (myElementToRename != null && myElementToRename.isValid && oldName == scalaName(myElementToRename))
         myElementToRename
       else null
     }
@@ -131,7 +104,7 @@ class ScalaMemberInplaceRenamer(elementToRename: PsiNamedElement,
     LanguageNamesValidation.INSTANCE.forLanguage(language).isIdentifier(newName, myProject)
 
   override def createInplaceRenamerToRestart(variable: PsiNamedElement, editor: Editor, initialName: String): VariableInplaceRenamer =
-    new ScalaMemberInplaceRenamer(variable, getSubstituted, editor, initialName, oldName)
+    new ScalaMemberInplaceRenamer(variable, getSubstituted)(initialName, oldName)(editor)
 
   override def performInplaceRename(): Boolean = {
     val names = new util.LinkedHashSet[String]()

@@ -45,9 +45,9 @@ class ScalaMemberInplaceRenameHandler extends MemberInplaceRenameHandler with Sc
     }
 
 
-    new ScalaMemberInplaceRenamer(maybeFirstElement.getOrElse(elementToRename),
-      maybeSecondElement.getOrElse(substituted),
-      editor)
+    val owner = maybeFirstElement.getOrElse(elementToRename)
+    val element = maybeSecondElement.getOrElse(substituted)
+    new ScalaMemberInplaceRenamer(owner, element)()(editor)
   }
 
   override def doRename(elementToRename: PsiElement, editor: Editor, dataContext: DataContext): InplaceRefactoring = {

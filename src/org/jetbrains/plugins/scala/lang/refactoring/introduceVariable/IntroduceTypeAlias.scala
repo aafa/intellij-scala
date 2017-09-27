@@ -127,7 +127,7 @@ class IntroduceTypeAlias(protected val conflictsReporter: ConflictsReporter)
       Option(TemplateManagerImpl.getTemplateState(InjectedLanguageUtil.getTopLevelEditor(editor)))
         .foreach(_.gotoEnd())
 
-      ScalaInplaceTypeAliasIntroducer.revertState
+      RevertInfo.revertStateCommand() {}
 
       localRunWithDialog()
     } else {

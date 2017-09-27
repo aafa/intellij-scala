@@ -1,10 +1,9 @@
 package org.jetbrains.plugins.scala.lang.refactoring.introduceVariable
 
 import com.intellij.openapi.command.undo.UndoManager
-import com.intellij.openapi.editor.{Editor, ScrollType}
+import com.intellij.openapi.editor.Editor
 import com.intellij.psi._
 import com.intellij.refactoring.RefactoringActionHandler
-import org.jetbrains.plugins.scala.extensions.{inWriteAction, startCommand}
 import org.jetbrains.plugins.scala.lang.psi.api.statements.ScTypeAliasDefinition
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.ScNamedElement
 import org.jetbrains.plugins.scala.lang.refactoring.rename.inplace.ScalaMemberInplaceRenamer
@@ -14,36 +13,10 @@ import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.Re
  * Created by Kate Ustyuzhanina
  * on 8/10/15
  */
-object ScalaInplaceTypeAliasIntroducer {
-
-  def revertState(implicit editor: Editor): Unit = {
-    val project = editor.getProject
-    val manager = PsiDocumentManager.getInstance(project)
-
-    startCommand(project, () => {
-      val document = editor.getDocument
-      RevertInfo.find.foreach {
-        case RevertInfo(fileText, caretOffset) =>
-          inWriteAction {
-            document.replaceString(0, document.getTextLength, fileText)
-            manager.commitDocument(document)
-          }
-
-          editor.getCaretModel.moveToOffset(caretOffset)
-          editor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
-
-          manager.commitDocument(document)
-      }
-      if (!project.isDisposed && project.isOpen) {
-        manager.commitDocument(document)
-      }
-    }, "Introduce Type Alias")
-  }
-}
 
 class ScalaInplaceTypeAliasIntroducer(element: ScNamedElement)
                                      (implicit editor: Editor)
-  extends ScalaMemberInplaceRenamer(element, element, editor, element.getName, element.getName) {
+  extends ScalaMemberInplaceRenamer(element, element)(element.getName, element.getName) {
 
   override def setAdvertisementText(text: String): Unit = {
     myAdvertisementText = "Press ctrl + alt + v" + " to show dialog with more options"
@@ -66,15 +39,7 @@ class ScalaInplaceTypeAliasIntroducer(element: ScNamedElement)
     }
     else if (myInsertedName != null && !UndoManager.getInstance(myProject).isUndoInProgress
       && !IntroduceTypeAliasData.find.exists(_.modalDialogInProgress)) {
-      RevertInfo.find(myEditor).foreach {
-        case RevertInfo(fileText, caretOffset) =>
-          inWriteAction {
-            val myFile: PsiFile = PsiDocumentManager.getInstance(myEditor.getProject).getPsiFile(myEditor.getDocument)
-            myEditor.getDocument.replaceString(0, myFile.getTextLength, fileText)
-          }
-          myEditor.getCaretModel.moveToOffset(caretOffset)
-          myEditor.getScrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
-      }
+      RevertInfo.revert()(myEditor)
     }
   }
 }
