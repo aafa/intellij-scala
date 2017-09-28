@@ -48,8 +48,7 @@ trait IntroduceElement {
       occurrenceHighlighters = highlightOccurrences(project, occurrences, editor)
     }
 
-    dialog.show()
-    if (dialog.isOK) Some(dialog) else {
+    if (dialog.showAndGet()) Some(dialog) else {
       if (multipleOccurrences) {
         WindowManager.getInstance
           .getStatusBar(project)

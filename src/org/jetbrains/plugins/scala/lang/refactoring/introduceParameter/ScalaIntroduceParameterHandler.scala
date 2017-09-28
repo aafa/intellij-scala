@@ -4,11 +4,9 @@ package refactoring
 package introduceParameter
 
 import com.intellij.ide.util.SuperMethodWarningUtil
-import com.intellij.internal.statistic.UsageTrigger
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.project.Project
 import com.intellij.psi._
 import com.intellij.psi.codeStyle.CodeStyleManager
@@ -28,7 +26,7 @@ import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory
 import org.jetbrains.plugins.scala.lang.psi.types._
 import org.jetbrains.plugins.scala.lang.psi.types.api.{Any, FunctionType}
 import org.jetbrains.plugins.scala.lang.refactoring.changeSignature.{ScalaMethodDescriptor, ScalaParameterInfo}
-import org.jetbrains.plugins.scala.lang.refactoring.introduceParameter.ScalaIntroduceParameterHandler._
+import org.jetbrains.plugins.scala.lang.refactoring.introduceVariable.IntroduceElement
 import org.jetbrains.plugins.scala.lang.refactoring.namesSuggester.NameSuggester
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil._
 import org.jetbrains.plugins.scala.lang.refactoring.util.{DialogConflictsReporter, ScalaVariableValidator}
@@ -36,17 +34,18 @@ import org.jetbrains.plugins.scala.lang.refactoring.util.{DialogConflictsReporte
 import scala.collection.mutable.ArrayBuffer
 
 /**
- * User: Alexander Podkhalyuzin
- * Date: 11.06.2009
- */
-class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with DialogConflictsReporter {
+  * User: Alexander Podkhalyuzin
+  * Date: 11.06.2009
+  */
+class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler
+  with DialogConflictsReporter with IntroduceElement {
 
-  private var occurrenceHighlighters = Seq.empty[RangeHighlighter]
-
+  override private[refactoring] val refactoringName: String = ScalaBundle.message("introduce.parameter.title")
+  override protected val triggerName: String = ScalaBundle.message("introduce.parameter.id")
 
   override def invoke(file: PsiFile)
                      (implicit project: Project, editor: Editor, dataContext: DataContext): Unit = {
-    val scalaFile = maybeWritableScalaFile(file, REFACTORING_NAME)
+    val scalaFile = maybeWritableScalaFile(file, refactoringName)
       .getOrElse(return)
 
     afterExpressionChoosing(file, "Introduce Parameter") {
@@ -85,12 +84,13 @@ class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with 
     (CodeStyleManager.getInstance(project).reformat(toReturn).asInstanceOf[ScExpression], expr.getNonValueType().getOrAny)
   }
 
+  import ScalaIntroduceParameterHandler._
+
   private def invoke(file: ScalaFile)
                     (implicit project: Project, editor: Editor): Unit = {
-    UsageTrigger.trigger(ScalaBundle.message("introduce.parameter.id"))
+    trigger(file)
 
     trimSpacesAndComments(editor, file)
-    PsiDocumentManager.getInstance(project).commitAllDocuments()
 
     val (exprWithTypes, elems) = selectedElementsInFile(file) match {
       case Some((x, y)) => (x, y)
@@ -98,18 +98,17 @@ class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with 
     }
 
     afterMethodChoosing(elems.head) { methodLike =>
-      val data = collectData(exprWithTypes, elems, methodLike, editor)
-
-      data.foreach { d =>
-        val dialog = createDialog(project, d)
-        if (dialog.showAndGet) {
-          invokeLater {
-            if (editor != null && !editor.isDisposed)
-              editor.getSelectionModel.removeSelection()
-          }
-        } else {
-          occurrenceHighlighters.foreach(_.dispose())
-          occurrenceHighlighters = Seq.empty
+      collectData(exprWithTypes, elems, methodLike, editor)
+        .map { data =>
+          (data, createMethodDescriptor(data))
+        }.flatMap {
+        case (data, descriptor) =>
+          val dialog = new ScalaIntroduceParameterDialog(descriptor, data)
+          showDialog(dialog, data.occurrences)
+      }.foreach { _ =>
+        invokeLater {
+          if (editor != null && !editor.isDisposed)
+            editor.getSelectionModel.removeSelection()
         }
       }
     }
@@ -122,7 +121,7 @@ class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with 
     try {
       if (!editor.getSelectionModel.hasSelection) return None
 
-      val scalaFile = writableScalaFile(file, REFACTORING_NAME)
+      val scalaFile = writableScalaFile(file, refactoringName)
 
       val exprWithTypes = getExpressionWithTypes(scalaFile)
       val elems = exprWithTypes match {
@@ -131,9 +130,9 @@ class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with 
       }
 
       elems match {
-        case seq if showNotPossibleWarnings(seq, REFACTORING_NAME) => None
+        case seq if showNotPossibleWarnings(seq, refactoringName) => None
         case seq if haveReturnStmts(seq) =>
-          showErrorHint("Refactoring is not supported: selection contains return statement", REFACTORING_NAME)
+          showErrorHint("Refactoring is not supported: selection contains return statement", refactoringName)
           None
         case seq => Some((exprWithTypes, seq))
       }
@@ -189,11 +188,7 @@ class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with 
           case _ => methodLike
         }
 
-        val occurrences = getOccurrenceRanges(expr, occurrencesScope)
-        if (occurrences.length > 1)
-          occurrenceHighlighters = highlightOccurrences(project, occurrences, editor)
-
-        (occurrences, expr.getTextRange)
+        (getOccurrenceRanges(expr, occurrencesScope), expr.getTextRange)
       case _ => (Seq.empty, elems.head.getTextRange.union(elems.last.getTextRange))
 
     }
@@ -226,29 +221,6 @@ class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with 
     enclosingMethods
   }
 
-  def createDialog(project: Project, data: ScalaIntroduceParameterData): ScalaIntroduceParameterDialog = {
-    val paramInfo = new ScalaParameterInfo(data.paramName, -1, data.tp, project, false, false, data.defaultArg, isIntroducedParameter = true)
-    val descriptor = createMethodDescriptor(data.methodToSearchFor, paramInfo)
-    new ScalaIntroduceParameterDialog(project, descriptor, data)
-  }
-
-  def createMethodDescriptor(method: ScMethodLike, paramInfo: ScalaParameterInfo): ScalaMethodDescriptor = {
-    new ScalaMethodDescriptor(method) {
-      override def parametersInner: Seq[Seq[ScalaParameterInfo]] = {
-        val params = super.parametersInner
-        params.headOption match {
-          case Some(seq) if seq.lastOption.exists(_.isRepeatedParameter) =>
-            val newFirstClause = seq.dropRight(1) :+ paramInfo :+ seq.last
-            newFirstClause +: params.tail
-          case Some(seq) =>
-            val newFirstClause = seq :+ paramInfo
-            newFirstClause +: params.tail
-          case None => Seq(Seq(paramInfo))
-        }
-      }
-    }
-  }
-
   private def getTextForElement(method: ScMethodLike): String = {
     method match {
       case pc: ScPrimaryConstructor => s"${pc.containingClass.name} (primary constructor)"
@@ -269,12 +241,12 @@ class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with 
     val validEnclosingMethods: Seq[ScMethodLike] = getEnclosingMethods(element)
     if (validEnclosingMethods.size > 1 && !ApplicationManager.getApplication.isUnitTestMode) {
       showChooser[ScMethodLike](editor, validEnclosingMethods.toArray, action,
-        s"Choose function for $REFACTORING_NAME", getTextForElement, toHighlight)
+        s"Choose function for $refactoringName", getTextForElement, toHighlight)
     }
     else if (validEnclosingMethods.size == 1 || ApplicationManager.getApplication.isUnitTestMode) {
       action(validEnclosingMethods.head)
     } else {
-      showErrorHint(ScalaBundle.message("cannot.refactor.no.function"), REFACTORING_NAME)
+      showErrorHint(ScalaBundle.message("cannot.refactor.no.function"), refactoringName)
     }
   }
 
@@ -296,5 +268,23 @@ class ScalaIntroduceParameterHandler extends ScalaRefactoringActionHandler with 
 }
 
 object ScalaIntroduceParameterHandler {
-  val REFACTORING_NAME = ScalaBundle.message("introduce.parameter.title")
+
+  def createMethodDescriptor(data: ScalaIntroduceParameterData)
+                            (implicit project: Project): ScalaMethodDescriptor =
+    new ScalaMethodDescriptor(data.methodToSearchFor) {
+      override def parametersInner: Seq[Seq[ScalaParameterInfo]] = {
+        val paramInfo = new ScalaParameterInfo(data.paramName, -1, data.tp, project, false, false, data.defaultArg, isIntroducedParameter = true)
+        super.parametersInner match {
+          case Seq() => Seq(Seq(paramInfo))
+          case Seq(head, tail@_*) =>
+            val newFirstClause = if (head.lastOption.exists(_.isRepeatedParameter)) {
+              head.dropRight(1) :+ paramInfo :+ head.last
+            } else {
+              head :+ paramInfo
+            }
+
+            newFirstClause +: tail
+        }
+      }
+    }
 }

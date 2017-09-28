@@ -5,28 +5,27 @@ import java.awt.event.{ItemEvent, ItemListener}
 import java.util
 import javax.swing._
 
-import com.intellij.openapi.editor.event.{DocumentAdapter, DocumentEvent, DocumentListener}
+import com.intellij.openapi.editor.event.{DocumentEvent, DocumentListener}
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.{ComboBox, ValidationInfo}
 import com.intellij.refactoring.BaseRefactoringProcessor
 import com.intellij.ui.table.{JBTable, TableView}
 import com.intellij.ui.{EditorTextField, ToolbarDecorator}
 import com.intellij.util.IJSwingUtilities
-import org.jetbrains.plugins.scala.ScalaFileType
 import org.jetbrains.plugins.scala.lang.psi.types.ScType
 import org.jetbrains.plugins.scala.lang.refactoring.changeSignature._
 import org.jetbrains.plugins.scala.lang.refactoring.changeSignature.changeInfo.ScalaChangeInfo
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil
 import org.jetbrains.plugins.scala.util.JListCompatibility
+import org.jetbrains.plugins.scala.{ScalaBundle, ScalaFileType}
 
 import scala.collection.JavaConverters._
 
 /**
  * @author Nikolay.Tropin
  */
-class ScalaIntroduceParameterDialog(project: Project,
-                              method: ScalaMethodDescriptor,
-                              introduceData: ScalaIntroduceParameterData)
+class ScalaIntroduceParameterDialog(method: ScalaMethodDescriptor, introduceData: ScalaIntroduceParameterData)
+                                   (implicit project: Project)
         extends ScalaChangeSignatureDialog(project, method, false) {
 
   private var paramNameField: EditorTextField = _
@@ -38,7 +37,7 @@ class ScalaIntroduceParameterDialog(project: Project,
 
   override def init(): Unit = {
     super.init()
-    setTitle(ScalaIntroduceParameterHandler.REFACTORING_NAME)
+    setTitle(ScalaBundle.message("introduce.parameter.title"))
   }
 
   override def createNorthPanel(): JComponent = {

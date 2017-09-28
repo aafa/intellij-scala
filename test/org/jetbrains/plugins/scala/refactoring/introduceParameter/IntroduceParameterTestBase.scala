@@ -17,18 +17,20 @@ import org.jetbrains.plugins.scala.lang.psi.api.base.ScMethodLike
 import org.jetbrains.plugins.scala.lang.psi.api.statements.ScFunctionDefinition
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef.ScClass
 import org.jetbrains.plugins.scala.lang.psi.types.api._
+import org.jetbrains.plugins.scala.lang.refactoring.changeSignature.ScalaChangeSignatureProcessor
 import org.jetbrains.plugins.scala.lang.refactoring.changeSignature.changeInfo.ScalaChangeInfo
-import org.jetbrains.plugins.scala.lang.refactoring.changeSignature.{ScalaChangeSignatureProcessor, ScalaMethodDescriptor, ScalaParameterInfo}
 import org.jetbrains.plugins.scala.lang.refactoring.introduceParameter.ScalaIntroduceParameterHandler
 import org.jetbrains.plugins.scala.lang.refactoring.util.ScalaRefactoringUtil.{afterExpressionChoosing, trimSpacesAndComments}
 import org.jetbrains.plugins.scala.util.ScalaUtils
+import org.junit.Assert._
 
 /**
- * @author Alexander Podkhalyuzin
- */
+  * @author Alexander Podkhalyuzin
+  */
 
 abstract class IntroduceParameterTestBase extends ScalaLightPlatformCodeInsightTestCaseAdapter {
   protected def folderPath = baseRootPath() + "introduceParameter/"
+
   private val startMarker = "/*start*/"
   private val endMarker = "/*end*/"
   private val allMarker = "//all = "
@@ -37,19 +39,21 @@ abstract class IntroduceParameterTestBase extends ScalaLightPlatformCodeInsightT
   private val constructorMarker = "//constructor = "
 
   protected def doTest() {
-    import _root_.junit.framework.Assert._
     implicit val project: Project = getProjectAdapter
     val filePath = folderPath + getTestName(false) + ".scala"
     val file = LocalFileSystem.getInstance.findFileByPath(filePath.replace(File.separatorChar, '/'))
-    assert(file != null, "file " + filePath + " not found")
+    assertNotNull("file " + filePath + " not found", file)
+
     val fileText = StringUtil.convertLineSeparators(FileUtil.loadFile(new File(file.getCanonicalPath), CharsetToolkit.UTF8))
     configureFromFileTextAdapter(getTestName(false) + ".scala", fileText)
     val scalaFile = getFileAdapter.asInstanceOf[ScalaFile]
     val startOffset = fileText.indexOf(startMarker) + startMarker.length
-    assert(startOffset != -1 + startMarker.length,
-      "Not specified start marker in test case. Use /*start*/ in scala file for this.")
+    assertNotEquals("Not specified start marker in test case. Use /*start*/ in scala file for this.",
+      startOffset, -1 + startMarker.length)
+
     val endOffset = fileText.indexOf(endMarker)
-    assert(endOffset != -1, "Not specified end marker in test case. Use /*end*/ in scala file for this.")
+    assertNotEquals("Not specified end marker in test case. Use /*end*/ in scala file for this.",
+      endOffset, -1)
 
     val fileEditorManager = FileEditorManager.getInstance(project)
     implicit val editor: Editor = fileEditorManager
@@ -68,6 +72,7 @@ abstract class IntroduceParameterTestBase extends ScalaLightPlatformCodeInsightT
         comment.getText.substring(marker.length)
       }
     }
+
     val replaceAllOccurrences = getSetting(allMarker, "true").toBoolean
     val paramName = getSetting(nameMarker, "param")
     val isDefaultParam = getSetting(defaultMarker, "false").toBoolean
@@ -91,13 +96,16 @@ abstract class IntroduceParameterTestBase extends ScalaLightPlatformCodeInsightT
                 val fun = PsiTreeUtil.getContextOfType(elems.head, true, classOf[ScFunctionDefinition])
                 (fun, fun.returnType.getOrAny)
               }
-            val collectedData = handler.collectData(exprWithTypes, elems, methodLike, editor)
-            assert(collectedData.isDefined, "Could not collect data for introduce parameter")
-            val data = collectedData.get.copy(paramName = paramName, replaceAll = replaceAllOccurrences)
 
-            val paramInfo = new ScalaParameterInfo(data.paramName, -1, data.tp, project, false, false, data.defaultArg, isIntroducedParameter = true)
-            val descriptor: ScalaMethodDescriptor = handler.createMethodDescriptor(data.methodToSearchFor, paramInfo)
-            val changeInfo = new ScalaChangeInfo(descriptor.getVisibility, data.methodToSearchFor, descriptor.getName, returnType,
+            val data = handler.collectData(exprWithTypes, elems, methodLike, editor)
+              .map(_.copy(paramName = paramName, replaceAll = replaceAllOccurrences))
+              .getOrElse {
+                fail("Could not collect data for introduce parameter")
+                null
+              }
+
+            val descriptor = ScalaIntroduceParameterHandler.createMethodDescriptor(data)
+            val changeInfo = ScalaChangeInfo(descriptor.getVisibility, data.methodToSearchFor, descriptor.getName, returnType,
               descriptor.parameters, isDefaultParam)
 
             changeInfo.introducedParameterData = Some(data)
@@ -108,7 +116,7 @@ abstract class IntroduceParameterTestBase extends ScalaLightPlatformCodeInsightT
       res = scalaFile.getText.substring(0, lastPsi.getTextOffset).trim
     }
     catch {
-      case e: Exception => assert(assertion = false, message = e.getMessage + "\n" + e.getStackTrace)
+      case e: Exception => fail(e.getMessage + "\n" + e.getStackTrace)
     }
 
     val text = lastPsi.getText
@@ -117,9 +125,10 @@ abstract class IntroduceParameterTestBase extends ScalaLightPlatformCodeInsightT
       case ScalaTokenTypes.tBLOCK_COMMENT | ScalaTokenTypes.tDOC_COMMENT =>
         text.substring(2, text.length - 2).trim
       case _ =>
-        assertTrue("Test result must be in last comment statement.", false)
-        ""
+        fail("Test result must be in last comment statement.")
+        null
     }
+
     assertEquals(output, res.trim)
   }
 }
